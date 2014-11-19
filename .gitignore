@@ -1,0 +1,10 @@
+*~
+a.out
+*.a
+*.o
+*.swp
+*.run
+*.mod
+*.phy
+.nfs*
+*.phy
