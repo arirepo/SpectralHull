@@ -30,6 +30,7 @@ module quad_gen
     integer, dimension(:), allocatable :: flag
     integer, dimension(:,:), allocatable :: b_edges
     integer, dimension(:,:), allocatable :: be_elem
+    integer, dimension(:,:), allocatable :: e2e
     real(rk), dimension(:,:), allocatable :: b_vals
   end type mygrid
 
@@ -41,6 +42,7 @@ module quad_gen
       integer,  dimension(:),   allocatable, intent(in out) :: etype
       real(rk), dimension(:),   allocatable, intent(in out) :: x, y
       integer,                               intent(in out) :: nq, nt
+      integer, dimension(:,:), allocatable :: nntoc, ntoc
       type(mygrid) :: g
       type(mycurve), dimension(:), allocatable :: bc
       integer :: nb
@@ -48,6 +50,9 @@ module quad_gen
       call read_segment_file(inputfile, bc, nb, nurbs_i)
 
       call create_grid(g, bc, nb, x, y, g%b_edges, g%b_vals, g%n_b_edges, g%be_elem)
+
+      call get_node_to_quad(g%nn, g%elem, g%etype, g%flag, g%elemidx, nntoc, ntoc)
+      call get_e2e(g%elem, g%elemidx, g%etype, nntoc, ntoc, g%e2e)
 
       allocate(elemidx(size(g%elemidx)))
       allocate(elem(size(g%elem)))
@@ -57,7 +62,7 @@ module quad_gen
       etype(:) = g%etype(:)
       nq = g%nq
       nt = g%nt
-
+      deallocate(nntoc, ntoc)
     end subroutine quad_grid_gen
 
     subroutine read_segment_file(inputfile, bc, nb, bt)
@@ -224,6 +229,36 @@ module quad_gen
       end do
 
     end subroutine get_elem_edge
+
+    subroutine get_e2e(elem, elemidx, etype, nntoc, ntoc, e2e)
+      integer, dimension(:),                intent(in)     :: elem
+      integer, dimension(:),                intent(in)     :: elemidx, etype, ntoc, nntoc
+      integer, dimension(:,:), allocatable, intent(in out) :: e2e
+      integer :: i, j, n1, n2, e1, e2, e11, e22, f
+
+      allocate(e2e(size(etype), 4))
+
+      do e1 = 1, size(etype)
+        do f = 0, etype(e1) - 1
+          n1 = elem(elemidx(e1) + f)
+          n2 = elem(elemidx(e1) + MOD(1 + f, etype(e1)))
+
+          e2 = 0
+          do i = nntoc(n1), nntoc(n1 + 1) - 1
+            e11 = ntoc(i)
+            do j = nntoc(n2), nntoc(n2 + 1) - 1
+              e22 = ntoc(j)
+              if( abs(e11 - e22) < 1 .and. abs(e11 - e1) > 0)then
+                e2 = e11
+              end if
+            end do
+          end do
+
+          e2e(e1, f + 1) = e2
+
+        end do
+      end do
+    end subroutine get_e2e
 
     ! distribute np(i) points evenly along boundary(i) 
     subroutine distribute_points(bc, np, bx, by, x, y, bconn, bvals, bpl, loops, l)
