@@ -13,7 +13,7 @@ module nurbs
 
   public :: nurbs_eval
 ! arguments: real Cx(:), real Cy(:), integer np, real u,
-!            real x, real y, real w(:), real knot(:), integer prime
+!            real x, real y, real w(:), real knot(:)
 
   public :: comp_nurbs
 ! arguments: real x(:), real y(:), real u(:), 
@@ -25,7 +25,7 @@ module nurbs
   public :: tester
 
   contains
-    subroutine nurbs_eval(Cx, Cy, np, u, x, y, w, knot, prime)
+    subroutine nurbs_eval(Cx, Cy, np, u, x, y, w, knot, opt)
       real(rk), dimension(:), intent(in) :: Cx
       real(rk), dimension(:), intent(in) :: Cy
       integer,                intent(in) :: np
@@ -33,10 +33,9 @@ module nurbs
       real(rk), dimension(:), intent(in) :: w
       real(rk), dimension(:), intent(in) :: knot
       real(rk),               intent(out) :: x, y
-      integer,                intent(in) :: prime
-
-      real(rk), dimension(:), allocatable :: N
-      real(rk) :: denom
+      character(len=*),       intent(in) :: opt
+      real(rk), dimension(:), allocatable :: N, N_prime
+      real(rk) :: denom, x1, x2, x3, x4, y1, y2, y3, y4
       integer :: i, p, nc
 
       nc = size(Cx)
@@ -48,37 +47,73 @@ module nurbs
 
       allocate( N(nc) )
 
-      call evaluate_bases(p, N, knot, u, prime)
+      call evaluate_bases(p, N, knot, u, opt)
       denom = dot_product(w, N)
 
-      x = 0.0_rk
-      y = 0.0_rk
-      do i = 1, nc
-        x = x + N(i) * w(i) * Cx(i)
-        y = y + N(i) * w(i) * Cy(i)
-      end do
-      if( abs(x) > 0 )then
-        x = x / denom
-      end if
-      if( abs(y) > 0 )then
-        y = y / denom
-      end if
+      select case(opt)
+      case('interp')
 
-      if(prime > 0)then
-        x = 1.0_rk
-      end if
+        x = 0.0_rk
+        y = 0.0_rk
+        do i = 1, nc
+          x = x + N(i) * w(i) * Cx(i)
+          y = y + N(i) * w(i) * Cy(i)
+        end do
+        if( abs(x) > 0 )then
+          x = x / denom
+        end if
+        if( abs(y) > 0 )then
+          y = y / denom
+        end if
+
+      case('diff1')
+        allocate(N_prime(nc))
+        call evaluate_bases(p, N, knot, u, 'interp')
+        call evaluate_bases(p, N_prime, knot, u, opt)
+
+        x1 = 0.0_rk
+        y1 = 0.0_rk
+        x2 = 0.0_rk
+        y2 = 0.0_rk
+        x3 = 0.0_rk
+        y3 = 0.0_rk
+        x4 = 0.0_rk
+        y4 = 0.0_rk
+        do i = 1, nc
+          x1 = x1 + (w(i) * Cx(i) * N_prime(i))
+          y1 = y1 + (w(i) * Cy(i) * N_prime(i))
+          x2 = x2 + (w(i) * N(i))
+          y2 = y2 + (w(i) * N(i))
+          x3 = x3 + (w(i) * Cx(i) * N(i))
+          y3 = y3 + (w(i) * Cy(i) * N(i))
+          x4 = x4 + (w(i) * N_prime(i))
+          y4 = y4 + (w(i) * N_prime(i))
+        end do
+        x = (x1 * x2) - (x3 * x4)
+        y = (y1 * y2) - (y3 * y4)
+        if( abs(x) > 0 )then
+          x = x / (denom * denom)
+        end if
+        if( abs(y) > 0 )then
+          y = y / (denom * denom)
+        end if
+
+        deallocate(N_prime)
+      case default
+        write(*,*)'fatal : no recognized option is given to nurbs_eval routine'
+      end select
+
       deallocate(N)
     end subroutine nurbs_eval
 
     ! evaluates nc b-spline basis functions of order p at point u.
     ! the results are stored in N(1:nc)
-    subroutine evaluate_bases(p, N, knot, u, prime)
-      integer, intent(in) :: p
+    subroutine evaluate_bases(p, N, knot, u, opt)
+      integer,                intent(in)     :: p
       real(rk), dimension(:), intent(in out) :: N
-      real(rk), dimension(:), intent(in) :: knot
-      real(rk) :: u
-      integer, intent(in) :: prime
-
+      real(rk), dimension(:), intent(in)     :: knot
+      real(rk),               intent(in)     :: u
+      character(len=*),       intent(in)     :: opt
       integer :: i, j, k, nc
       real(rk) :: v1, v2, d1, d2
       real(rk), dimension(:), allocatable :: N1
@@ -89,7 +124,10 @@ module nurbs
                 & 'input value u not within range [0, 1]'
       else if(u < knot(nc+p+1))then
         allocate( N1(nc + 1) )
-        if(prime < 1)then
+
+        select case(opt)
+        case('interp')
+
           N1(:) = 0.0_rk
           do i = 1, nc
             if( (u >= knot(i)) .and. (u < knot(i + 1)) )then
@@ -112,15 +150,56 @@ module nurbs
             end do
             N1(:nc) = N(:nc)
           end do
-        else 
 
-        end if
-        deallocate( N1 )
+        case('diff1')
+
+          N1(:) = 0.0_rk
+          do i = 1, nc
+            if( (u >= knot(i)) .and. (u < knot(i + 1)) )then
+              N1(i) = 1.0_rk
+            end if
+          end do
+          do k = 1, p - 1
+            do i = 1, nc
+              v1 = 0.0_rk
+              v2 = 0.0_rk
+              d1 = knot(i + k) - knot(i)
+              d2 = knot(i + k + 1) - knot(i + 1)
+              if( (abs(N1(i + 1)) > 0) .and. (abs(knot(i + k + 1) - u) > 0) )then
+                v2 = N1(i + 1) * ( knot(i + k + 1) - u ) / d2
+              end if
+              if( (abs(N1(i)) > 0) .and. (abs(u - knot(i)) > 0) )then
+                v1 = N1(i) * ( u - knot(i) ) / d1
+              end if
+              N(i) = v1 + v2
+            end do
+            N1(:nc) = N(:nc)
+          end do
+          do i = 1, nc
+            v1 = 0.0_rk
+            v2 = 0.0_rk
+            d1 = knot(i + p) - knot(i)
+            d2 = knot(i + p + 1) - knot(i + 1)
+            if(abs(N1(i)) > 0)then
+              v1 = p * N1(i) / d1
+            end if
+            if(abs(N1(i + 1)) > 0)then
+              v2 = p * N1(i + 1) / d2
+            end if
+            N(i) = v1 - v2
+          end do
+          deallocate(N1)
+        case default
+          write(*,*)'fatal : no recognized option is provided to evaluate_bases routine'
+        end select
+
+        deallocate(N1)
+
       else if(.not. (u < knot(nc + p + 1)))then
         N(:) = 0.0_rk
         N(nc) = 1.0_rk
       end if
-    end subroutine evaluate_bases  
+    end subroutine evaluate_bases
 
     ! this subroutine creates a nurbs curve to approximate a given set of points x, y. 
     ! The resulting curve is described by Cx, Cy, w, knot.
@@ -149,7 +228,7 @@ module nurbs
 
       D = 0.0;
       do i = 1, np
-        call nurbs_eval(Cx, Cy, np, u(i), nx, ny, w, knot, 0)
+        call nurbs_eval(Cx, Cy, np, u(i), nx, ny, w, knot, 'interp')
         D = MAX(D, sqrt((nx - x(i))**2 + (ny - y(i))**2))
         x(i) = nx; y(i) = ny
       end do
@@ -226,14 +305,14 @@ module nurbs
       allocate(IPIV(np,np))
 
       do i = 1, np
-        call evaluate_bases(p, N1, knot, t(i), 0)
+        call evaluate_bases(p, N1, knot, t(i), 'interp')
         N(i,:) = N1(:)
       end do
       Cx(:) = x(:)
       call dgesv(np, 1, N, lda, IPIV, Cx, ldb, info_x)
 
       do i = 1, np
-        call evaluate_bases(p, N1, knot, t(i), 0)
+        call evaluate_bases(p, N1, knot, t(i), 'interp')
         N(i,:) = N1(:)
       end do
       Cy(:) = y(:)
@@ -363,7 +442,7 @@ module nurbs
       open(fnum,file=trim(fname))
       xv = 0.0_rk
       do i = 1, 1000
-        call evaluate_bases(p, N, knot, xv, 0)
+        call evaluate_bases(p, N, knot, xv, 'interp')
         denom = dot_product(w, N)
         xnum = 0.0_rk
         ynum = 0.0_rk

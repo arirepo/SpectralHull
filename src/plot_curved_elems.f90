@@ -331,8 +331,10 @@ contains
        t => tcurve%t
        xs => tcurve%x
        ys => tcurve%y
-       call spline_eval2(t, xs, tt0, xA, 'interp', tcurve%Mx)
-       call spline_eval2(t, ys, tt0, yA, 'interp', tcurve%My)
+       call spline_nurbs_eval2(tt0, xs, ys, tcurve%a, tcurve%b, tcurve%c, &
+                    & tcurve%Mx, tcurve%My, t, xA, yA, 'interp', tcurve%btype)
+!      call spline_eval2(t, xs, tt0, xA, 'interp', tcurve%Mx)
+!      call spline_eval2(t, ys, tt0, yA, 'interp', tcurve%My)
        this_tt(1) = tt0
     end if
     ! straight edge by default
@@ -345,8 +347,10 @@ contains
        t => tcurve%t
        xs => tcurve%x
        ys => tcurve%y
-       call spline_eval2(t, xs, tt0, xB, 'interp', tcurve%Mx)
-       call spline_eval2(t, ys, tt0, yB, 'interp', tcurve%My)
+       call spline_nurbs_eval2(tt0, xs, ys, tcurve%a, tcurve%b, tcurve%c, &
+                    & tcurve%Mx, tcurve%My, t, xB, yB, 'interp', tcurve%btype)
+!      call spline_eval2(t, xs, tt0, xB, 'interp', tcurve%Mx)
+!      call spline_eval2(t, ys, tt0, yB, 'interp', tcurve%My)
        this_tt(2) = tt0
     end if
     ! straight edge by default
@@ -359,8 +363,10 @@ contains
        t => tcurve%t
        xs => tcurve%x
        ys => tcurve%y
-       call spline_eval2(t, xs, tt0, xC, 'interp', tcurve%Mx)
-       call spline_eval2(t, ys, tt0, yC, 'interp', tcurve%My)
+       call spline_nurbs_eval2(tt0, xs, ys, tcurve%a, tcurve%b, tcurve%c, &
+                    & tcurve%Mx, tcurve%My, t, xC, yC, 'interp', tcurve%btype)
+!      call spline_eval2(t, xs, tt0, xC, 'interp', tcurve%Mx)
+!      call spline_eval2(t, ys, tt0, yC, 'interp', tcurve%My)
        this_tt(3) = tt0
     end if
 

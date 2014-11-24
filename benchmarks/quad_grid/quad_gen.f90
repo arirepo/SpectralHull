@@ -1,6 +1,7 @@
 module quad_gen
   use globals
-  use grid_wrapper
+  use spline
+  use grid_opt, only : curve
 
   implicit none
 
@@ -12,26 +13,16 @@ module quad_gen
   integer, parameter :: quadrilateral = 4
   real(rk) :: tol = 1.0e-10
 
-  type mycurve
-    integer :: btype = spline_i
-!   integer :: btype = nurbs_i
-    real(rk), dimension(:), allocatable :: x, y
-    real(rk), dimension(:), allocatable :: t
-    real(rk), dimension(:), allocatable :: Mx, My
-    real(rk), dimension(:), allocatable :: a, b, c, d
-    real(rk), dimension(:), allocatable :: cp, dp
-  end type mycurve
-
   type mygrid
     integer :: nelem, nn, nq, nt, n_b_edges
-    integer, dimension(:), allocatable :: elem
-    integer, dimension(:), allocatable :: etype
-    integer, dimension(:), allocatable :: elemidx
-    integer, dimension(:), allocatable :: flag
-    integer, dimension(:,:), allocatable :: b_edges
-    integer, dimension(:,:), allocatable :: be_elem
-    integer, dimension(:,:),   allocatable :: e2e
-    real(rk), dimension(:,:), allocatable :: b_vals
+    integer, dimension(:),    allocatable :: elem
+    integer, dimension(:),    allocatable :: etype
+    integer, dimension(:),    allocatable :: elemidx
+    integer, dimension(:),    allocatable :: flag
+    integer, dimension(:,:),  allocatable :: b_edges
+    integer, dimension(:,:),  allocatable :: be_elem
+    integer, dimension(:,:),  allocatable :: e2e
+    integer, dimension(:),    allocatable :: b_vals
   end type mygrid
 
   contains
@@ -44,7 +35,7 @@ module quad_gen
       integer,                               intent(in out) :: nq, nt
       integer, dimension(:), allocatable :: nntoc, ntoc
       type(mygrid) :: g
-      type(mycurve), dimension(:), allocatable :: bc
+      type(curve), dimension(:), allocatable :: bc
       integer :: nb
 
       call read_segment_file(inputfile, bc, nb, nurbs_i)
@@ -68,7 +59,7 @@ module quad_gen
 
     subroutine read_segment_file(inputfile, bc, nb, bt)
       character(len=*), intent(in) :: inputfile
-      type(mycurve), dimension(:), allocatable, intent(in out) :: bc
+      type(curve), dimension(:), allocatable, intent(in out) :: bc
       integer, intent(in out) :: nb
       integer, optional :: bt
       integer :: i, j, npt, tot_seg, tot_curves, istat, nc, btype
@@ -117,7 +108,7 @@ module quad_gen
       do j = 1, tot_curves
          read(9,*,iostat=istat) npt 
 
-         allocate(bc(j)%x(npt), bc(j)%y(npt))
+         allocate(bc(j)%x(npt), bc(j)%y(npt), bc(j)%t(npt))
 
          print *, 'for bn_curves(',j,')'
          do i = 1, npt
@@ -135,11 +126,10 @@ module quad_gen
 
          nc = size(bc(j)%x)
          if(.not. allocated(bc(j)%Mx))then
-           call boundary_curve_alloc( bc(j)%t, bc(j)%Mx, bc(j)%My, bc(j)%a, &
-                                      bc(j)%b, bc(j)%c, bc(j)%d, bc(j)%cp, bc(j)%dp,&
-                                      bc(j)%x, bc(j)%y, nc, bc(j)%btype)
+           call spline_nurbs_alloc( bc(j)%Mx, bc(j)%My, bc(j)%a, bc(j)%b, bc(j)%c,&
+                                      & bc(j)%d, bc(j)%cp, bc(j)%dp, nc, bc(j)%btype)
          end if
-         call boundary_comp(bc(j)%x, bc(j)%y,bc(j)%a, bc(j)%b, bc(j)%c, bc(j)%d &
+         call spline_nurbs_comp(bc(j)%x, bc(j)%y,bc(j)%a, bc(j)%b, bc(j)%c, bc(j)%d &
                             , bc(j)%cp, bc(j)%dp, bc(j)%Mx, bc(j)%My, bc(j)%t, &
                             & mode, bc(j)%btype)
 
@@ -153,11 +143,11 @@ module quad_gen
 
     subroutine create_grid(g, bc, nb, x, y, b_edges, b_vals, nbe, be_elem)
       type(mygrid),                             intent(in out) :: g
-      type(mycurve), dimension(:),              intent(in)     :: bc
+      type(curve), dimension(:),              intent(in)     :: bc
       integer,                                  intent(in)     :: nb
       real(rk),    dimension(:),   allocatable, intent(in out) :: x, y
       integer,     dimension(:,:), allocatable, intent(in out) :: b_edges
-      real(rk),    dimension(:,:), allocatable, intent(in out) :: b_vals
+      integer,     dimension(:),   allocatable, intent(in out) :: b_vals
       integer,     dimension(:,:), allocatable, intent(in out) :: be_elem
       integer,                                  intent(in out) :: nbe
       integer,     dimension(:), allocatable :: loops, bpl
@@ -263,14 +253,14 @@ module quad_gen
 
     ! distribute np(i) points evenly along boundary(i) 
     subroutine distribute_points(bc, np, bx, by, x, y, bconn, bvals, bpl, loops, l)
-      type(mycurve),dimension(:),   intent(in)     :: bc
-      integer,      dimension(:),   intent(in)     :: np
-      real(rk),     dimension(:),   intent(in out) :: bx
-      real(rk),     dimension(:),   intent(in out) :: by
-      real(rk),     dimension(:),   intent(in)     :: x, y
-      integer,      dimension(:),   intent(in)     :: bconn
-      real(rk),     dimension(:,:), intent(in out) :: bvals
-      integer,      dimension(:),   intent(in)     :: bpl, loops
+      type(curve),  dimension(:), intent(in)     :: bc
+      integer,      dimension(:), intent(in)     :: np
+      real(rk),     dimension(:), intent(in out) :: bx
+      real(rk),     dimension(:), intent(in out) :: by
+      real(rk),     dimension(:), intent(in)     :: x, y
+      integer,      dimension(:), intent(in)     :: bconn
+      integer,      dimension(:), intent(in out) :: bvals
+      integer,      dimension(:), intent(in)     :: bpl, loops
       integer, intent(in) :: l
       integer :: b, i, p, prime, nb, lc
       real(rk) :: d, xv, yv
@@ -290,13 +280,10 @@ module quad_gen
         do p = 1, np(b)
           d = (p - 1.0_rk) / (np(b))
           d = bc(b)%t(1) + d * (bc(b)%t(size(bc(b)%t)) - bc(b)%t(1))
-          call boundary_eval(d, bc(b)%x, bc(b)%y, bc(b)%a, bc(b)%b, &
+          call spline_nurbs_eval2(d, bc(b)%x, bc(b)%y, bc(b)%a, bc(b)%b, &
                       & bc(b)%c, bc(b)%Mx, bc(b)%My, bc(b)%t, xv, yv, &
                       & opt, bc(b)%btype)
-          bvals(i,1) = b
-          bvals(i,2) = d
-          bvals(i,3) = bc(b)%t(1) + (bc(b)%t(size(bc(b)%t)) - bc(b)%t(1)) * &
-                     & (p - 1.0_rk) / np(b)
+          bvals(i) = b
           bx(i) = xv
           by(i) = yv
           i = i + 1
@@ -306,7 +293,7 @@ module quad_gen
 
     subroutine create_tmp_points(loops, bpl, l, bc, bx, by, npb)
       integer,       dimension(:), intent(in)     :: loops, bpl, npb
-      type(mycurve), dimension(:), intent(in)     :: bc
+      type(curve), dimension(:), intent(in)     :: bc
       integer,                     intent(in)     :: l
       real(rk),      dimension(:), intent(in out) :: bx, by
       integer :: i, j, k, b
@@ -320,7 +307,7 @@ module quad_gen
         do j = 1, npb(b)
           d = (j - 1.0_rk) / (npb(b) - 0.0_rk)
           d = bc(b)%t(1) + d * (bc(b)%t(size(bc(b)%t)) - bc(b)%t(1))
-          call boundary_eval(d, bc(b)%x, bc(b)%y, bc(b)%a, bc(b)%b, &
+          call spline_nurbs_eval2(d, bc(b)%x, bc(b)%y, bc(b)%a, bc(b)%b, &
                       & bc(b)%c, bc(b)%Mx, bc(b)%My, bc(b)%t, xv, yv, &
                       & opt, bc(b)%btype)
           bx(k) = xv
@@ -355,7 +342,7 @@ module quad_gen
 
     subroutine get_extrema(xn, xx, yn, yx, bc, nb)
       real(rk), intent(in out) :: xn, xx, yn, yx
-      type(mycurve), dimension(:), intent(in) :: bc
+      type(curve), dimension(:), intent(in) :: bc
       integer, intent(in) :: nb
       integer :: b
       xn = MINVAL(bc(1)%x)
@@ -371,7 +358,7 @@ module quad_gen
     end subroutine get_extrema
   
     subroutine initialize_grid(bc, g, x, y, loops, bpl, nl, nb, gxn, gxx, gyn, gyx)
-      type(mycurve), dimension(:),          intent(in)     :: bc
+      type(curve), dimension(:),          intent(in)     :: bc
       type(mygrid),                         intent(in out) :: g
       real(rk),  dimension(:), allocatable, intent(in out) :: x
       real(rk),  dimension(:), allocatable, intent(in out) :: y
@@ -458,7 +445,7 @@ module quad_gen
       type(mygrid),                            intent(in)     :: g
       integer,      dimension(:),              intent(in)     :: loops, bpl
       integer,                                 intent(in)     :: nl, nb
-      type(mycurve),dimension(:),              intent(in)     :: bc
+      type(curve),dimension(:),              intent(in)     :: bc
       real(rk),     dimension(:), allocatable, intent(in out) :: ddx, ddy
       integer,                                 intent(in out) :: nx, ny
       real(rk),                                intent(in)     :: xmin, ymin
@@ -614,7 +601,7 @@ module quad_gen
     subroutine check_enclosed_loops(loops, bpl, nl, bc, xmin, ymin, odx, ody, dx, dy, nx, ny)
       integer,       dimension(:), intent(in)     :: loops, bpl
       integer,                     intent(in)     :: nl
-      type(mycurve), dimension(:), intent(in)     :: bc
+      type(curve), dimension(:), intent(in)     :: bc
       real(rk),                    intent(in)     :: xmin, ymin
       real(rk),                    intent(in out) :: odx, ody, dx, dy
       integer,       dimension(:), intent(in out) :: nx, ny
@@ -663,7 +650,7 @@ module quad_gen
     end subroutine check_enclosed_loops
 
     subroutine preprocess_quads(bc, x, y, nb, nx, ny, mycheck)
-      type(mycurve), dimension(:),              intent(in)     :: bc
+      type(curve), dimension(:),              intent(in)     :: bc
       real(rk),      dimension(:), allocatable, intent(in out) :: x, y
       integer,                                  intent(in)     :: nb
       integer,                                  intent(in out) :: nx, ny, mycheck
@@ -737,7 +724,7 @@ module quad_gen
 
     subroutine find_intersection_nos(x1, y1, x2, y2, bc, nb, ix, iy, n_int)
       real(rk),                    intent(in)     :: x1, y1, x2, y2
-      type(mycurve), dimension(:), intent(in)     :: bc
+      type(curve), dimension(:), intent(in)     :: bc
       integer,                     intent(in)     :: nb
       real(rk),                    intent(in out) :: ix, iy
       integer,                     intent(in out) :: n_int
@@ -1825,7 +1812,7 @@ module quad_gen
     end subroutine get_node_to_quad
 
     subroutine get_loops(bc, loops, bpl, nl, nb)
-      type(mycurve),  dimension(:),              intent(in)     :: bc
+      type(curve),  dimension(:),              intent(in)     :: bc
       integer,        dimension(:), allocatable, intent(in out) :: loops
       integer,        dimension(:), allocatable, intent(in out) :: bpl
       integer,                                   intent(in out) :: nl
@@ -1937,13 +1924,13 @@ module quad_gen
     ! and create a mesh interface between boundary and overlay
     subroutine interface_boundary_grid(g, bc, x, y, loops, bpl, nl, nb, b_edges, be_vals, nbe)
       type(mygrid),                              intent(in out) :: g
-      type(mycurve),dimension(:),                intent(in)     :: bc
+      type(curve),  dimension(:),                intent(in)     :: bc
       real(rk),     dimension(:),   allocatable, intent(in out) :: x, y
       integer,      dimension(:),                intent(in)     :: loops, bpl
       integer,                                   intent(in)     :: nl, nb
       integer,      dimension(:,:), allocatable, intent(in out) :: b_edges
-      real(rk),     dimension(:,:), allocatable, intent(in out) :: be_vals
-      integer, intent(in out) :: nbe
+      integer,      dimension(:),   allocatable, intent(in out) :: be_vals
+      integer,                                   intent(in out) :: nbe
       integer,      dimension(:), allocatable :: bconn
       integer,      dimension(:), allocatable :: npb
       integer,      dimension(:), allocatable :: nq
@@ -1956,7 +1943,7 @@ module quad_gen
 
       allocate(b_edges(1,2))
       allocate(tmp(1,2))
-      allocate(be_vals(1,3))
+      allocate(be_vals(1))
       be_ct = 0
 
       nbpl = bpl(2) - bpl(1)
@@ -2038,7 +2025,7 @@ module quad_gen
     subroutine color_elem(l, loops, bpl, bc, g, x, y, nbpl, pcolor, qcolor)
       integer,                    intent(in)     :: l, nbpl
       integer,      dimension(:), intent(in)     :: loops, bpl
-      type(mycurve),dimension(:), intent(in)     :: bc
+      type(curve),dimension(:), intent(in)     :: bc
       type(mygrid),               intent(in out) :: g
       real(rk),     dimension(:), intent(in)     :: x, y
       integer,      dimension(:), intent(in out) :: pcolor, qcolor
@@ -2709,7 +2696,7 @@ module quad_gen
     subroutine connect_interior_boundary(g, bc, x, y, bx, by, npb, bconn, & 
                       & new_elem, l, bpl, loops, nbpl, b_edges, be_ct, be_vals, pcolor)
       type(mygrid),                              intent(in out) :: g
-      type(mycurve),dimension(:),                intent(in)     :: bc
+      type(curve),dimension(:),                intent(in)     :: bc
       real(rk),     dimension(:), allocatable,   intent(in out) :: x, y
       real(rk),     dimension(:),                intent(in out) :: bx, by
       integer,      dimension(:),                intent(in out) :: npb
@@ -2719,20 +2706,20 @@ module quad_gen
       integer,      dimension(:),                intent(in)     :: bpl, loops
       integer,      dimension(:,:),              intent(in out) :: b_edges
       integer,                                   intent(in)     :: be_ct
-      real(rk),     dimension(:,:), allocatable, intent(in out) :: be_vals
+      integer,      dimension(:),   allocatable, intent(in out) :: be_vals
       integer,      dimension(:),                intent(in)     :: pcolor
-      real(rk),     dimension(:,:),   allocatable :: bidx
-      integer,      dimension(:),     allocatable :: bnum
-      real(rk),     dimension(:,:),   allocatable :: tbv
+      integer,      dimension(:), allocatable :: bidx
+      integer,      dimension(:), allocatable :: bnum
+      integer,      dimension(:), allocatable :: tbv
       integer :: nq, nnc, nnp, nnq
       integer :: i, j, n1, n2, n3, n4, q, k, bct
 
       nnc = SUM(npb)
-      allocate(tbv(be_ct,3))
-      tbv(:be_ct,:3) = be_vals(:be_ct,:3)
+      allocate(tbv(be_ct))
+      tbv(:be_ct) = be_vals(:be_ct)
       deallocate(be_vals)
-      allocate(be_vals(be_ct + nnc,3))
-      be_vals(:be_ct,:3) = tbv(:be_ct,:3)
+      allocate(be_vals(be_ct + nnc))
+      be_vals(:be_ct) = tbv(:be_ct)
       deallocate(tbv)
 
       npb(:) = 0
@@ -2743,7 +2730,7 @@ module quad_gen
       end do
 
       nq = SUM(npb)
-      allocate( bidx(SUM(npb),3) )
+      allocate( bidx(SUM(npb)) )
       allocate( bnum(SUM(npb)) )
       bct = 1
       do i = bpl(l), bpl(l + 1) - 1
@@ -2772,9 +2759,9 @@ module quad_gen
           b_edges(be_ct + 1 + q, 1) = n1
           b_edges(be_ct + 1 + q, 2) = n2
 
-          be_vals(be_ct + 1 + q, 1) = bidx(n1 - g%nn, 1)
-          be_vals(be_ct + 1 + q, 2) = bidx(n1 - g%nn, 2)
-          be_vals(be_ct + 1 + q, 3) = bidx(n2 - g%nn, 3)
+          be_vals(be_ct + 1 + q) = bidx(n1 - g%nn)
+          be_vals(be_ct + 1 + q) = bidx(n1 - g%nn)
+          be_vals(be_ct + 1 + q) = bidx(n2 - g%nn)
         end if
       end do
 
@@ -2810,7 +2797,7 @@ module quad_gen
     end subroutine connect_interior_boundary
 
     subroutine get_best_connections(bc, bpl, loops, l, nbpl, nn, x, y, bx, by, bconn, npb, bnum)
-      type(mycurve), dimension(:), intent(in)     :: bc
+      type(curve), dimension(:), intent(in)     :: bc
       integer,       dimension(:), intent(in)     :: bpl, loops
       integer,                     intent(in)     :: nbpl, l, nn
       real(rk),      dimension(:), intent(in)     :: x, y, bx, by
@@ -2881,7 +2868,7 @@ module quad_gen
     end subroutine find_closest_point
 
     subroutine get_optimal_npb(bc, bconn, bnum, x, y, npb, bpl, loops, l, ngn)
-      type(mycurve), dimension(:), intent(in)     :: bc
+      type(curve), dimension(:), intent(in)     :: bc
       integer,       dimension(:), intent(in out) :: bconn, npb
       integer,       dimension(:), intent(in out) :: bnum
       integer,       dimension(:), intent(in)     :: bpl, loops

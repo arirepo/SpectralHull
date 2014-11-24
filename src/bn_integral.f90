@@ -126,8 +126,10 @@ print *, 'size(val) = ', size(val)
              stop
           end if
           ! find new snapped xq(i) and yq(i) on the curve
-          call spline_eval2(t, xs, tt, xdot, 'interp', tcurve%Mx)
-          call spline_eval2(t, ys, tt, ydot, 'interp', tcurve%My)
+          call spline_nurbs_eval2(tt, xs, ys, tcurve%a, tcurve%b, tcurve%c, &
+                    & tcurve%Mx, tcurve%My, t, xdot, ydot, 'interp', tcyrve%btype)
+!         call spline_eval2(t, xs, tt, xdot, 'interp', tcurve%Mx)
+!         call spline_eval2(t, ys, tt, ydot, 'interp', tcurve%My)
           ! print *, 'xq(i) = ', xq(i), 'xdot = ', xdot
           ! print *, 'yq(i) = ', yq(i), 'ydot = ', ydot
           ! print *, 'diff_x = ', (xq(i) - xdot), 'diff_y = ', (yq(i) - ydot)
@@ -135,8 +137,10 @@ print *, 'size(val) = ', size(val)
           xq(i) = xdot
           yq(i) = ydot
           ! computing derivatives xdot and ydot ...
-          call spline_eval2(t, xs, tt, xdot, 'diff1', tcurve%Mx)
-          call spline_eval2(t, ys, tt, ydot, 'diff1', tcurve%My)
+          call spline_nurbs_eval2(tt, xs, ys, tcurve%a, tcurve%b, tcurve%c, &
+                     & tcurve%Mx, tcurve%My, t, xdot, ydot, 'diff1', tcurve%btype)
+!         call spline_eval2(t, xs, tt, xdot, 'diff1', tcurve%Mx)
+!         call spline_eval2(t, ys, tt, ydot, 'diff1', tcurve%My)
           print *, 'tag = ', tag, 'xdot = ', xdot, 'ydot = ', ydot
           print *, 'size(t) = ', size(t)
           xdot = xdot * 0.5d0 * (t2 - t1)
