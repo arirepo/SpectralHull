@@ -30,7 +30,7 @@ module quad_gen
     integer, dimension(:), allocatable :: flag
     integer, dimension(:,:), allocatable :: b_edges
     integer, dimension(:,:), allocatable :: be_elem
-    integer, dimension(:,:), allocatable :: e2e
+    integer, dimension(:,:),   allocatable :: e2e
     real(rk), dimension(:,:), allocatable :: b_vals
   end type mygrid
 
@@ -42,7 +42,7 @@ module quad_gen
       integer,  dimension(:),   allocatable, intent(in out) :: etype
       real(rk), dimension(:),   allocatable, intent(in out) :: x, y
       integer,                               intent(in out) :: nq, nt
-      integer, dimension(:,:), allocatable :: nntoc, ntoc
+      integer, dimension(:), allocatable :: nntoc, ntoc
       type(mygrid) :: g
       type(mycurve), dimension(:), allocatable :: bc
       integer :: nb
@@ -62,6 +62,7 @@ module quad_gen
       etype(:) = g%etype(:)
       nq = g%nq
       nt = g%nt
+
       deallocate(nntoc, ntoc)
     end subroutine quad_grid_gen
 
