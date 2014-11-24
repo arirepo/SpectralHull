@@ -36,7 +36,7 @@ module quad_gen
       integer, dimension(:), allocatable :: nntoc, ntoc
       type(mygrid) :: g
       type(curve), dimension(:), allocatable :: bc
-      integer :: nb
+      integer :: nb, i, j, k
 
       call read_segment_file(inputfile, bc, nb, nurbs_i)
 
@@ -143,7 +143,7 @@ module quad_gen
 
     subroutine create_grid(g, bc, nb, x, y, b_edges, b_vals, nbe, be_elem)
       type(mygrid),                             intent(in out) :: g
-      type(curve), dimension(:),              intent(in)     :: bc
+      type(curve), dimension(:),                intent(in out) :: bc
       integer,                                  intent(in)     :: nb
       real(rk),    dimension(:),   allocatable, intent(in out) :: x, y
       integer,     dimension(:,:), allocatable, intent(in out) :: b_edges
@@ -1924,7 +1924,7 @@ module quad_gen
     ! and create a mesh interface between boundary and overlay
     subroutine interface_boundary_grid(g, bc, x, y, loops, bpl, nl, nb, b_edges, be_vals, nbe)
       type(mygrid),                              intent(in out) :: g
-      type(curve),  dimension(:),                intent(in)     :: bc
+      type(curve),  dimension(:),                intent(in out) :: bc
       real(rk),     dimension(:),   allocatable, intent(in out) :: x, y
       integer,      dimension(:),                intent(in)     :: loops, bpl
       integer,                                   intent(in)     :: nl, nb
@@ -2696,7 +2696,7 @@ module quad_gen
     subroutine connect_interior_boundary(g, bc, x, y, bx, by, npb, bconn, & 
                       & new_elem, l, bpl, loops, nbpl, b_edges, be_ct, be_vals, pcolor)
       type(mygrid),                              intent(in out) :: g
-      type(curve),dimension(:),                intent(in)     :: bc
+      type(curve),  dimension(:),                intent(in out)     :: bc
       real(rk),     dimension(:), allocatable,   intent(in out) :: x, y
       real(rk),     dimension(:),                intent(in out) :: bx, by
       integer,      dimension(:),                intent(in out) :: npb
@@ -2712,7 +2712,7 @@ module quad_gen
       integer,      dimension(:), allocatable :: bnum
       integer,      dimension(:), allocatable :: tbv
       integer :: nq, nnc, nnp, nnq
-      integer :: i, j, n1, n2, n3, n4, q, k, bct
+      integer :: i, j, n1, n2, n3, n4, q, k, bct, b
 
       nnc = SUM(npb)
       allocate(tbv(be_ct))
@@ -2763,6 +2763,18 @@ module quad_gen
           be_vals(be_ct + 1 + q) = bidx(n1 - g%nn)
           be_vals(be_ct + 1 + q) = bidx(n2 - g%nn)
         end if
+      end do
+
+      ! change x, y coordinates of bc to be the recently added values
+      bct = 1
+      do i = bpl(l), bpl(l + 1) - 1
+        b = loops(i)
+        j = npb(b)
+        deallocate(bc(b)%x, bc(b)%y)
+        allocate(bc(b)%x(j), bc(b)%y(j))
+        bc(b)%x(:j) = bx(bct : bct + j - 1)
+        bc(b)%y(:j) = by(bct : bct + j - 1)
+        bct = bct + j
       end do
 
       deallocate( bidx )
