@@ -37,7 +37,7 @@ LINK_SUFFIX  =     -llapack -lblas
 #          your test case problem. 
 
 ### objects
-OBJ = triangle.o custom_Tri_wrapper.o condition.o rev_cuthill_mckee.o fekete.o ncc_triangle.o globals.o spline.o splib.o ortho_poly.o fem_reordering.o grid_opt.o lag_basis.o fem_utils.o dunavant.o gen_basis.o element_opt.o bn_integral.o bcs.o normal_rand.o sparse_opt.o precond_opt.o reorder_opt.o sparse_assembly.o mfree.o mfree_st.o spem_2d.o interp.o ps.o trimesher.o plot_curved_elems.o  benchmark_geom.o   
+OBJ = triangle.o custom_Tri_wrapper.o condition.o rev_cuthill_mckee.o fekete.o ncc_triangle.o globals.o nurbs.o spline.o splib.o ortho_poly.o fem_reordering.o grid_opt.o lag_basis.o fem_utils.o dunavant.o gen_basis.o element_opt.o bn_integral.o bcs.o normal_rand.o sparse_opt.o precond_opt.o reorder_opt.o sparse_assembly.o mfree.o mfree_st.o spem_2d.o interp.o ps.o trimesher.o plot_curved_elems.o  benchmark_geom.o   
 ###
 
 ### compile and link

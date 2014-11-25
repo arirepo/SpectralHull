@@ -127,7 +127,7 @@ print *, 'size(val) = ', size(val)
           end if
           ! find new snapped xq(i) and yq(i) on the curve
           call spline_nurbs_eval2(tt, xs, ys, tcurve%a, tcurve%b, tcurve%c, &
-                    & tcurve%Mx, tcurve%My, t, xdot, ydot, 'interp', tcyrve%btype)
+                    & tcurve%Mx, tcurve%My, t, xdot, ydot, 'interp', tcurve%btype)
 !         call spline_eval2(t, xs, tt, xdot, 'interp', tcurve%Mx)
 !         call spline_eval2(t, ys, tt, ydot, 'interp', tcurve%My)
           ! print *, 'xq(i) = ', xq(i), 'xdot = ', xdot
