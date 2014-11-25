@@ -11,7 +11,7 @@ module grid_opt
   !    manipulation
   ! for unstructered grid in TETREX format
   implicit none
-! This is the change... not for keeping.
+
   private
 
   type master_elem
@@ -25,6 +25,9 @@ module grid_opt
   end type edges
 
   type curve
+     ! type of interpolation curve use
+     integer :: btype = spline_i
+!    integer :: btype = nurbs_i
      ! point coords
      real*8, dimension(:), allocatable :: x, y
      ! spline stuff
@@ -919,16 +922,20 @@ contains
        t => tcurve%t
        t = (/ (dble(i) , i = 1, nc) /)
        if (.not. allocated(tcurve%Mx) ) then
-          allocate(tcurve%Mx(nc), tcurve%My(nc), tcurve%a(nc) &
-                 , tcurve%b(nc), tcurve%c(nc), tcurve%d(nc)    &
-                 , tcurve%cp(nc), tcurve%dp(nc) )
+          call spline_nurbs_alloc(tcurve%Mx, tcurve%My, tcurve%a, tcurve%b, &
+                & tcurve%c, tcurve%d, tcurve%cp, tcurve%dp, nc)
+!         allocate(tcurve%Mx(nc), tcurve%My(nc), tcurve%a(nc) &
+!                , tcurve%b(nc), tcurve%c(nc), tcurve%d(nc)    &
+!                , tcurve%cp(nc), tcurve%dp(nc) )
        end if
-       ! parametrize the x-coords
-       call comp_spline_weights(x, t , tcurve%Mx, tcurve%a, tcurve%b, tcurve%c &
-                              , tcurve%d, tcurve%cp, tcurve%dp, mode)
-       ! parametrize the y-coords
-       call comp_spline_weights(y, t , tcurve%My, tcurve%a, tcurve%b, tcurve%c &
-                              , tcurve%d, tcurve%cp, tcurve%dp, mode)
+       call spline_nurbs_comp(x, y, tcurve%a, tcurve%b, tcurve%c, tcurve%d, &
+                           & tcurve%cp, tcurve%dp, tcurve%Mx, tcurve%My, t, mode)
+!      ! parametrize the x-coords
+!      call comp_spline_weights(x, t , tcurve%Mx, tcurve%a, tcurve%b, tcurve%c &
+!                             , tcurve%d, tcurve%cp, tcurve%dp, mode)
+!      ! parametrize the y-coords
+!      call comp_spline_weights(y, t , tcurve%My, tcurve%a, tcurve%b, tcurve%c &
+!                             , tcurve%d, tcurve%cp, tcurve%dp, mode)
 
 
     end do
@@ -1030,8 +1037,10 @@ contains
        tt = (/ (1.0d0 + dble(i - 1)/dble(nscat - 1) * dble(nc - 1) &
              , i = 1, nscat) /)
        do i = 1, nscat
-          call spline_eval2(t, x, tt(i), xx(i), opt, tcurve%Mx)
-          call spline_eval2(t, y, tt(i), yy(i), opt, tcurve%My)
+          call spline_nurbs_eval2(tt(i), x, y, tcurve%a, tcurve%b, tcurve%c, &
+                       & tcurve%Mx, tcurve%My, t, xx(i), yy(i), opt, tcurve%btype)
+!         call spline_eval2(t, x, tt(i), xx(i), opt, tcurve%Mx)
+!         call spline_eval2(t, y, tt(i), yy(i), opt, tcurve%My)
        end do
        ! write to the file
        call scatter_tecplot(outfile, append_flag, title, xx, yy, u)
@@ -1409,12 +1418,14 @@ contains
           end if
 
           ! computing snapped coordinate
-          call spline_eval2(t, xs, tt, xx, 'interp', tcurve%Mx)
-          ! updating x
+          call spline_nurbs_eval2(tt, xs, ys, tcurve%a, tcurve%b, tcurve%c, &
+                       & tcurve%Mx, tcurve%My, t, xx, yy, 'interp', tcurve%btype)
+!         call spline_eval2(t, xs, tt, xx, 'interp', tcurve%Mx)
+!         ! updating x
           grd%x(pt1) = xx
-          ! computing snapped coordinate
-          call spline_eval2(t, ys, tt, yy, 'interp', tcurve%My)
-          ! updating y
+!         ! computing snapped coordinate
+!         call spline_eval2(t, ys, tt, yy, 'interp', tcurve%My)
+!         ! updating y
           grd%y(pt1) = yy
 
           ! set the flag
@@ -1432,12 +1443,14 @@ contains
           end if
 
           ! computing snapped coordinate
-          call spline_eval2(t, xs, tt, xx, 'interp', tcurve%Mx)
-          ! updating x
+          call spline_nurbs_eval2(tt, xs, ys, tcurve%a, tcurve%b, tcurve%c, &
+                       & tcurve%Mx, tcurve%My, t, xx, yy, 'interp', tcurve%btype)
+!         call spline_eval2(t, xs, tt, xx, 'interp', tcurve%Mx)
+!         ! updating x
           grd%x(pt2) = xx
-          ! computing snapped coordinate
-          call spline_eval2(t, ys, tt, yy, 'interp', tcurve%My)
-          ! updating y
+!         ! computing snapped coordinate
+!         call spline_eval2(t, ys, tt, yy, 'interp', tcurve%My)
+!         ! updating y
           grd%y(pt2) = yy
 
           ! set the flag
@@ -1534,8 +1547,10 @@ contains
        ! print *, 't = ', t
        ! print *, 't1 = ', t1, 't2 = ', t2, 'tt = ', tt
 
-       call spline_eval2(t, xs, tt, Cx, opt, tcurve%Mx)
-       call spline_eval2(t, ys, tt, Cy, opt, tcurve%My)
+       call spline_nurbs_eval2(tt, xs, ys, tcurve%a, tcurve%b, tcurve%c, &
+                   & tcurve%Mx, tcurve%My, t, Cx, Cy, 'interp', tcurve%btype)
+!      call spline_eval2(t, xs, tt, Cx, opt, tcurve%Mx)
+!      call spline_eval2(t, ys, tt, Cy, opt, tcurve%My)
        ! print *, 'done computing C for curve ', tag
 
     end if
