@@ -923,13 +923,13 @@ contains
        t = (/ (dble(i) , i = 1, nc) /)
        if (.not. allocated(tcurve%Mx) ) then
           call spline_nurbs_alloc(tcurve%Mx, tcurve%My, tcurve%a, tcurve%b, &
-                & tcurve%c, tcurve%d, tcurve%cp, tcurve%dp, nc)
+                & tcurve%c, tcurve%d, tcurve%cp, tcurve%dp, nc, tcurve%btype)
 !         allocate(tcurve%Mx(nc), tcurve%My(nc), tcurve%a(nc) &
 !                , tcurve%b(nc), tcurve%c(nc), tcurve%d(nc)    &
 !                , tcurve%cp(nc), tcurve%dp(nc) )
        end if
        call spline_nurbs_comp(x, y, tcurve%a, tcurve%b, tcurve%c, tcurve%d, &
-                           & tcurve%cp, tcurve%dp, tcurve%Mx, tcurve%My, t, mode)
+                           & tcurve%cp, tcurve%dp, tcurve%Mx, tcurve%My, t, mode, tcurve%btype)
 !      ! parametrize the x-coords
 !      call comp_spline_weights(x, t , tcurve%Mx, tcurve%a, tcurve%b, tcurve%c &
 !                             , tcurve%d, tcurve%cp, tcurve%dp, mode)
