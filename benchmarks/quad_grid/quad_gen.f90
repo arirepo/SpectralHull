@@ -36,7 +36,7 @@ module quad_gen
       integer, dimension(:), allocatable :: nntoc, ntoc
       type(mygrid) :: g
       type(curve), dimension(:), allocatable :: bc
-      integer :: nb, i, j, k
+      integer :: nb
 
       call read_segment_file(inputfile, bc, nb, nurbs_i)
 
@@ -2769,12 +2769,19 @@ module quad_gen
       bct = 1
       do i = bpl(l), bpl(l + 1) - 1
         b = loops(i)
-        j = npb(b)
+        j = npb(b) + 1
         deallocate(bc(b)%x, bc(b)%y)
         allocate(bc(b)%x(j), bc(b)%y(j))
-        bc(b)%x(:j) = bx(bct : bct + j - 1)
-        bc(b)%y(:j) = by(bct : bct + j - 1)
-        bct = bct + j
+        if(i < (bpl(l + 1) - 1))then
+          bc(b)%x(:j) = bx(bct : bct + j - 1)
+          bc(b)%y(:j) = by(bct : bct + j - 1)
+        else
+          bc(b)%x(:j - 1) = bx(bct : bct + j - 2)
+          bc(b)%y(:j - 1) = by(bct : bct + j - 2)
+          bc(b)%x(j) = bx(1)
+          bc(b)%y(j) = by(1)
+        end if
+        bct = bct + j - 1
       end do
 
       deallocate( bidx )
