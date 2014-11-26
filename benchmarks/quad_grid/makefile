@@ -5,7 +5,7 @@
 	$(GF) $(COMPFLAGS) -c $^ -o $@
 
 ### compiler
-GF = /opt/gcc/bin/gfortran
+GF = /usr/bin/gfortran
 VPATH = ./:../../src/:
 COMMONFLAGS = -lblas -llapack
 COMPFLAGS = -c -fbounds-check $(COMMONFLAGS)

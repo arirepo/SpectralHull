@@ -290,13 +290,13 @@ contains
     print *, 'dup_nodes = [', grd%dup_nodes , ']'
 
     ! print el2bn
-    do i = 1, grd%ntri
+    do i = 1, grd%ncellsg
        print *, 'grd%el2bn(', i, ':) = ', grd%el2bn(i, :)
     end do
 
 
     ! print el2edg (if allocated!)
-    do i = 1, grd%ntri
+    do i = 1, grd%ncellsg
        if ( allocated(grd%el2edg(i)%edg1) .and. &
             allocated(grd%el2edg(i)%edg2) .and. &
             allocated(grd%el2edg(i)%edg3) ) then
@@ -311,10 +311,15 @@ contains
     end do
 
     ! print master element interpolation points
-    do i = 1, grd%ntri
-       print *, 'in element num.', i , 'master elem interpolation points are:' 
-       print *, 'xi  = [', grd%maselem(i)%xi , ']'
-       print *, 'eta = [', grd%maselem(i)%eta, ']'
+    do i = 1, grd%ncellsg
+       if (allocated(grd%maselem(i)%xi) .and. allocated(grd%maselem(i)%eta)) then 
+          print *, 'in element num.', i , 'master elem interpolation points are:' 
+          print *, 'xi  = [', grd%maselem(i)%xi , ']'
+          print *, 'eta = [', grd%maselem(i)%eta, ']'
+       else
+          print *, 'warning: master element is not allocated' &
+               , ' for element #', i, ' yet!'
+       end if
     end do
 
     ! done here 

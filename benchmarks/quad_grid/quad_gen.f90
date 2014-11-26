@@ -1,13 +1,13 @@
 module quad_gen
   use globals
   use spline
-  use grid_opt, only : curve
+  use grid_opt, only : curve, grid
 
   implicit none
 
   private
 
-  public :: quad_grid_gen
+  public :: quad_grid_gen, quadgen
 
   integer, parameter :: triangle = 3
   integer, parameter :: quadrilateral = 4
@@ -26,6 +26,144 @@ module quad_gen
   end type mygrid
 
   contains
+    
+    subroutine quadgen(inputfile, grd, btype)
+      implicit none
+      character(len = *), intent(in) :: inputfile
+      type(grid), intent(inout) :: grd
+      integer, intent(in) :: btype ! nurbs_i or spline_i
+
+      ! local vars
+      integer :: ii, jj, nq, nt, nb, i1, i2
+      integer,  dimension(:),   allocatable :: elem, elemidx, etype, nntoc, ntoc
+      real(rk), dimension(:),   allocatable :: x, y
+      type(mygrid) :: g
+      type(curve), dimension(:), allocatable :: bc
+
+
+      ! bullet proofing
+      if ( allocated(grd%x) .or. allocated(grd%y) ) then
+         print *, 'the grid object is already allocated/initialized! stop'
+         stop
+      end if
+
+      ! create mixed element quad/tri mesh ... 
+      call read_segment_file(inputfile, bc, nb, btype)
+      call create_grid(g, bc, nb, x, y, g%b_edges, g%b_vals, g%n_b_edges, g%be_elem)
+      call get_node_to_quad(g%nn, g%elem, g%etype, g%flag, g%elemidx, nntoc, ntoc)
+      call get_e2e(g%elem, g%elemidx, g%etype, nntoc, ntoc, g%e2e)
+
+      ! export to type(grid)
+      grd%nnodesg = g%nn 
+      grd%ncellsg = g%nq + g%nt
+      grd%nbedgeg = g%n_b_edges
+      grd%ntri = g%nt
+      grd%nquad4 = g%nq
+      allocate(grd%x(size(x))); grd%x = x
+      allocate(grd%y(size(y))); grd%y = y 
+
+      if (grd%nquad4 .eq. 0) then
+         allocate(grd%icon(grd%ncellsg, 3)) ! all triangles :( 
+      else
+         allocate(grd%icon(grd%ncellsg, 4)) ! might be mixed
+      end if
+
+      grd%icon = 0
+      do ii = 1, grd%ncellsg
+         i1 = g%elemidx(ii)
+         i2 = i1 + g%etype(ii) - 1
+         grd%icon(ii, 1:(i2-i1+1)) = g%elem(i1:i2)  
+      end do
+
+      allocate(grd%ibedge(grd%nbedgeg, 2) )
+      grd%ibedge = g%b_edges
+
+      allocate(grd%ibedgeBC(grd%nbedgeg))
+      grd%ibedgeBC = g%b_vals
+
+      allocate(grd%ibedgeELEM(grd%nbedgeg))
+      grd%ibedgeELEM = g%be_elem(:, 1)
+
+      allocate(grd%ibedgeELEM_local_edg(grd%nbedgeg))
+      grd%ibedgeELEM_local_edg = g%be_elem(:, 2)
+
+      grd%meshFile = inputfile
+
+      ! e2e
+      if(grd%nquad4 .eq. 0) then
+         allocate(grd%e2e(grd%ncellsg, 3))
+      else
+         allocate(grd%e2e(grd%ncellsg, 4))
+      end if
+
+      do ii = 1, grd%ncellsg
+         do jj = 1, size(g%e2e, 2)
+            if (g%e2e(ii, jj) .eq. 0 ) then !wall
+               grd%e2e(ii, jj) = -1
+            else
+               grd%e2e(ii, jj) = g%e2e(ii, jj)
+            end if
+         end do
+      end do
+
+      ! dup_nodes is not allocated because no duplicate node
+      ! is generated in the quad generator!
+
+      allocate(grd%bn_curves(size(bc)))
+      grd%bn_curves = bc
+
+      allocate(grd%el2bn(grd%ncellsg, 2))
+      grd%el2bn = 0
+      do ii = 1, grd%nbedgeg
+         grd%el2bn(grd%ibedgeELEM(ii), 1) = grd%ibedgeBC(ii) 
+         grd%el2bn(grd%ibedgeELEM(ii), 2) = ii 
+      end do
+
+      allocate(grd%el2edg(grd%ncellsg))
+
+      allocate(grd%p(grd%ncellsg)); grd%p = 1
+      allocate(grd%eltype(grd%ncellsg), grd%npe(grd%ncellsg))
+      do ii = 1, grd%ncellsg
+
+         grd%npe(ii) = g%etype(ii)
+
+         select case (g%etype(ii))
+
+         case (triangle)
+            grd%eltype(ii) = 0 ! lagrange basic p1 triangle
+
+         case (quadrilateral)
+            grd%eltype(ii) = 2 ! lagrange basic p1 quadri
+
+         case default
+            print *, 'incorrect element type in quadgen! stop'
+            stop
+
+         end select
+
+      end do
+
+      grd%nnodesg0 = grd%nnodesg
+      grd%ncellsg0 = grd%ncellsg
+      grd%nbedgeg0 = grd%nbedgeg !initial config before hp-adapt
+
+      ! also maselem will be allocated in the corresponding 
+      ! high-order grid generation subroutines.
+      allocate(grd%maselem(grd%ncellsg))
+
+      ! clean ups
+      if (allocated(elem)) deallocate(elem)
+      if (allocated(elemidx)) deallocate(elemidx)
+      if (allocated(etype)) deallocate(etype)
+      if (allocated(nntoc)) deallocate(nntoc)
+      if (allocated(ntoc)) deallocate(ntoc)
+      if (allocated(x)) deallocate(x)
+      if (allocated(y)) deallocate(y)
+      if (allocated(bc)) deallocate(bc)
+
+      ! done here
+    end subroutine quadgen
+
     subroutine quad_grid_gen(inputfile, elem, elemidx, etype, x, y, nq, nt)
       character(len=*),                      intent(in)     :: inputfile
       integer,  dimension(:),   allocatable, intent(in out) :: elem
