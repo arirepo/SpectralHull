@@ -7,7 +7,8 @@ module quad_gen
 
   private
 
-  public :: quad_grid_gen, quadgen
+! public :: quad_grid_gen
+  public :: quadgen
 
   integer, parameter :: triangle = 3
   integer, parameter :: quadrilateral = 4
@@ -27,11 +28,13 @@ module quad_gen
 
   contains
     
-    subroutine quadgen(inputfile, grd, btype)
+    subroutine quadgen(inputfile, grd, btype, newdx, newdy, newidx, newidy, splitflag)
       implicit none
       character(len = *), intent(in) :: inputfile
       type(grid), intent(inout) :: grd
       integer, intent(in) :: btype ! nurbs_i or spline_i
+      real(rk), intent(in out) :: newdx, newdy, newidx, newidy
+      integer, optional, intent(in out) :: splitflag
 
       ! local vars
       integer :: ii, jj, nq, nt, nb, i1, i2
@@ -49,7 +52,7 @@ module quad_gen
 
       ! create mixed element quad/tri mesh ... 
       call read_segment_file(inputfile, bc, nb, btype)
-      call create_grid(g, bc, nb, x, y, g%b_edges, g%b_vals, g%n_b_edges, g%be_elem)
+      call create_grid(g, bc, nb, x, y, g%b_edges, g%b_vals, g%n_b_edges, g%be_elem, newdx, newdy, newidx, newidy, splitflag)
       call get_node_to_quad(g%nn, g%elem, g%etype, g%flag, g%elemidx, nntoc, ntoc)
       call get_e2e(g%elem, g%elemidx, g%etype, nntoc, ntoc, g%e2e)
 
@@ -164,36 +167,36 @@ module quad_gen
       ! done here
     end subroutine quadgen
 
-    subroutine quad_grid_gen(inputfile, elem, elemidx, etype, x, y, nq, nt)
-      character(len=*),                      intent(in)     :: inputfile
-      integer,  dimension(:),   allocatable, intent(in out) :: elem
-      integer,  dimension(:),   allocatable, intent(in out) :: elemidx
-      integer,  dimension(:),   allocatable, intent(in out) :: etype
-      real(rk), dimension(:),   allocatable, intent(in out) :: x, y
-      integer,                               intent(in out) :: nq, nt
-      integer, dimension(:), allocatable :: nntoc, ntoc
-      type(mygrid) :: g
-      type(curve), dimension(:), allocatable :: bc
-      integer :: nb
+!   subroutine quad_grid_gen(inputfile, elem, elemidx, etype, x, y, nq, nt)
+!     character(len=*),                      intent(in)     :: inputfile
+!     integer,  dimension(:),   allocatable, intent(in out) :: elem
+!     integer,  dimension(:),   allocatable, intent(in out) :: elemidx
+!     integer,  dimension(:),   allocatable, intent(in out) :: etype
+!     real(rk), dimension(:),   allocatable, intent(in out) :: x, y
+!     integer,                               intent(in out) :: nq, nt
+!     integer, dimension(:), allocatable :: nntoc, ntoc
+!     type(mygrid) :: g
+!     type(curve), dimension(:), allocatable :: bc
+!     integer :: nb
 
-      call read_segment_file(inputfile, bc, nb, nurbs_i)
+!     call read_segment_file(inputfile, bc, nb, nurbs_i)
 
-      call create_grid(g, bc, nb, x, y, g%b_edges, g%b_vals, g%n_b_edges, g%be_elem)
+!     call create_grid(g, bc, nb, x, y, g%b_edges, g%b_vals, g%n_b_edges, g%be_elem)
 
-      call get_node_to_quad(g%nn, g%elem, g%etype, g%flag, g%elemidx, nntoc, ntoc)
-      call get_e2e(g%elem, g%elemidx, g%etype, nntoc, ntoc, g%e2e)
+!     call get_node_to_quad(g%nn, g%elem, g%etype, g%flag, g%elemidx, nntoc, ntoc)
+!     call get_e2e(g%elem, g%elemidx, g%etype, nntoc, ntoc, g%e2e)
 
-      allocate(elemidx(size(g%elemidx)))
-      allocate(elem(size(g%elem)))
-      allocate(etype(size(g%etype)))
-      elem(:) = g%elem(:)
-      elemidx(:) = g%elemidx(:)
-      etype(:) = g%etype(:)
-      nq = g%nq
-      nt = g%nt
+!     allocate(elemidx(size(g%elemidx)))
+!     allocate(elem(size(g%elem)))
+!     allocate(etype(size(g%etype)))
+!     elem(:) = g%elem(:)
+!     elemidx(:) = g%elemidx(:)
+!     etype(:) = g%etype(:)
+!     nq = g%nq
+!     nt = g%nt
 
-      deallocate(nntoc, ntoc)
-    end subroutine quad_grid_gen
+!     deallocate(nntoc, ntoc)
+!   end subroutine quad_grid_gen
 
     subroutine read_segment_file(inputfile, bc, nb, bt)
       character(len=*), intent(in) :: inputfile
@@ -281,7 +284,7 @@ module quad_gen
 
     end subroutine read_segment_file
 
-    subroutine create_grid(g, bc, nb, x, y, b_edges, b_vals, nbe, be_elem)
+    subroutine create_grid(g, bc, nb, x, y, b_edges, b_vals, nbe, be_elem, dx, dy, idx, idy, splitflag)
       type(mygrid),                             intent(in out) :: g
       type(curve), dimension(:),                intent(in out) :: bc
       integer,                                  intent(in)     :: nb
@@ -290,9 +293,11 @@ module quad_gen
       integer,     dimension(:),   allocatable, intent(in out) :: b_vals
       integer,     dimension(:,:), allocatable, intent(in out) :: be_elem
       integer,                                  intent(in out) :: nbe
+      real(rk),                                 intent(in out) :: dx, dy, idx, idy
+      integer, optional, intent(in) :: splitflag
       integer,     dimension(:), allocatable :: loops, bpl
       real(rk) :: xn, xx, yn, yx
-      integer :: nl, yes, i, k
+      integer :: nl, i, k
 
       call get_extrema(xn, xx, yn, yx, bc, nb)
 
@@ -303,7 +308,7 @@ module quad_gen
 
       !==========================================!
       !  create overlay grid to cover entire domain
-      call initialize_grid(bc, g, x, y, loops, bpl, nl, nb, xn, xx, yn, yx)
+      call initialize_grid(bc, g, x, y, loops, bpl, nl, nb, xn, xx, yn, yx, dx, dy, idx, idy)
       write(*,*)'overlay grid initialized'
 
       !==========================================!
@@ -312,12 +317,11 @@ module quad_gen
       call interface_boundary_grid(g, bc, x, y, loops, bpl, nl, nb, b_edges, b_vals, nbe)
       write(*,*)'interface between boundaries and overlay grid created'
 
-      write(*,*)'enter 1 to subdivide bad quads, 0 otherwise'
-      read(*,*)yes
-      if(yes > 0)then
+      if(present(splitflag))then
         call subdivide(x, y, g%elem, g%etype, g%nq, g%nt)
         g%nelem = g%nq + g%nt
       end if
+
       allocate(g%elemidx(g%nelem))
       k = 1
       do i = 1, g%nelem
@@ -497,7 +501,7 @@ module quad_gen
       end do
     end subroutine get_extrema
   
-    subroutine initialize_grid(bc, g, x, y, loops, bpl, nl, nb, gxn, gxx, gyn, gyx)
+    subroutine initialize_grid(bc, g, x, y, loops, bpl, nl, nb, gxn, gxx, gyn, gyx, dx, dy, idx, idy)
       type(curve), dimension(:),          intent(in)     :: bc
       type(mygrid),                         intent(in out) :: g
       real(rk),  dimension(:), allocatable, intent(in out) :: x
@@ -505,13 +509,19 @@ module quad_gen
       integer,   dimension(:),              intent(in)     :: loops, bpl
       integer,                              intent(in)     :: nl, nb
       real(rk),                             intent(in out) :: gxn, gxx, gyn, gyx
+      real(rk),                             intent(in out) :: dx, dy, idx, idy
       integer :: nn, nx, ny
-      real(rk) :: dx, dy
       integer :: i, j, k, n1, n2, row, col
       real(rk), dimension(:), allocatable :: ddx,ddy
       integer :: check
 
       call get_rays(gxn, gxx, gyn, gyx, nx, ny, dx, dy)
+      if(idx > dx)then
+        idx = dx
+      end if
+      if(idy > dy)then
+        idy = dy
+      end if
 
       allocate(ddx(nx * ny), ddy(nx * ny))
       do i = 1, ny
@@ -521,7 +531,7 @@ module quad_gen
         end do
       end do
 
-      call get_spacing(g, loops, bpl, nl, nb, bc, ddx, ddy, nx, ny, gxn, gyn)
+      call get_spacing(g, loops, bpl, nl, nb, bc, ddx, ddy, nx, ny, gxn, gyn, idx, idy)
 
       check = 1
       do while(check > 0)
@@ -566,8 +576,15 @@ module quad_gen
       integer,   intent(in out) :: nx, ny
       real(rk),  intent(in out) :: dx, dy
 
-      write(*,*)'Enter average spacing in x and y directions <dx dy>'
-      read(*,*)dx, dy
+      if ( (dx - 0.5_rk * (xmax - xmin)) > 0 .or. &
+         & (dy - 0.5_rk * (ymax - ymin)) > 0 )then
+        dx = 0.25_rk * (xmax - xmin)
+        dy = 0.25_rk * (ymax - ymin)
+      end if
+      if(dx < 0.0_rk .or. dy < 0.0_rk)then
+        dx = 0.25_rk * (xmax - xmin)
+        dy = 0.25_rk * (ymax - ymin)
+      end if
 
       xmin = xmin - 0.5_rk * dx
       ymin = ymin - 0.5_rk * dy
@@ -581,18 +598,19 @@ module quad_gen
       dy = (ymax - ymin) / (ny - 1.0_rk)
     end subroutine get_rays
 
-    subroutine get_spacing(g, loops, bpl, nl, nb, bc, ddx, ddy, nx, ny, xmin, ymin)
+    subroutine get_spacing(g, loops, bpl, nl, nb, bc, ddx, ddy, nx, ny, xmin, ymin, dx, dy)
       type(mygrid),                            intent(in)     :: g
       integer,      dimension(:),              intent(in)     :: loops, bpl
       integer,                                 intent(in)     :: nl, nb
-      type(curve),dimension(:),              intent(in)     :: bc
+      type(curve),  dimension(:),              intent(in)     :: bc
       real(rk),     dimension(:), allocatable, intent(in out) :: ddx, ddy
       integer,                                 intent(in out) :: nx, ny
       real(rk),                                intent(in)     :: xmin, ymin
+      real(rk),                                intent(in out) :: dx, dy
       integer, dimension(:), allocatable :: divide_x, divide_y
       integer :: i, j, k, n1, n2, outer_loop, nnx, nny
       real(rk) :: xv1, xv2, yv1, yv2
-      real(rk) :: dx, dy, xn, yn, xx, yx, g_xx, g_yx, g_xn, g_yn, xv, yv, odx, ody
+      real(rk) :: xn, yn, xx, yx, g_xx, g_yx, g_xn, g_yn, xv, yv, odx, ody
       real(rk), dimension(:), allocatable :: ndx, ndy
 
       odx = ddx(2) - ddx(1)
@@ -632,8 +650,6 @@ module quad_gen
       end do
 
       if(outer_loop > 0)then
-        write(*,*)'enter spacing around interior loops'
-        read(*,*)dx, dy
         n1 = MAX( int(odx / dx), 1)
         n2 = MAX( int(ody / dy), 1)
         do i = 1, nl
@@ -783,8 +799,8 @@ module quad_gen
           end if
         end do
         if(exn < xn .and. exx > xx .and. eyn < yn .and. eyx > yx)then
-          nx(col) = MAX(nx(col), dnx)
-          ny(row) = MAX(ny(row), dny)
+          nx(col) = MAX(nx(col), 2)
+          ny(row) = MAX(ny(row), 2)
         end if
       end do ! l : boundary loop count
     end subroutine check_enclosed_loops
@@ -901,7 +917,7 @@ module quad_gen
 
                 call get_intersection_point(ix3, iy3, x1, y1, x2, y2, x3, y3, x4, y4)
 
-                if(ix1 < (x1 + 1) .and. ix2 < (x2 + 1))then
+                if(ix1 < (x1 + 1) .or. ix1 < (x2 + 1))then
                   if( sqrt( (ix1 - ix3)**2 + (iy1 - iy3)**2) < tol)then
                   else
                     ix2 = ix3
@@ -1854,7 +1870,7 @@ module quad_gen
                 n1 = elem(elemidx(e) + k)
                 n2 = elem(elemidx(e) + MOD(k + 1, etype(e)))
                 n3 = elem(elemidx(e) + MOD(k + etype(e) - 1, etype(e)))
-                if(abs(n1 - i) < 1 .and. flag(n2) > 0 .and. flag(n3) < 0)then
+                if(abs(n1 - i) < 1 .and. flag(n2) > 0)then
                   eidx = j
                   idx = k
                 end if

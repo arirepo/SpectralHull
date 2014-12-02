@@ -11,6 +11,13 @@ program tester
   real*8, dimension(:,:), allocatable :: u
   integer :: nq, nt
   type(grid) :: grd
+  real(rk) :: dx, dy, idx, idy
+
+  dx = 3.0_rk
+  idx = dx
+  dy = dx
+  idy = dy
+
   ! ! call quad_grid_gen('../../geom/segments_tmp.dat', elem, x, y, nq, nt)
   ! ! call quad_grid_gen('../../geom/naca_edges.dat', elem, x, y, nq, nt)
   ! call quad_grid_gen('../../geom/coarse_cylinder_tri.dat', elem, elemidx, etype, x, y, nq, nt)
@@ -19,7 +26,8 @@ program tester
   ! deallocate(elem, x, y, elemidx, etype)
 
   ! testing type(grid) convertor
-  call quadgen('../../geom/coarse_cylinder_tri.dat', grd, 1)
+! call quadgen('../../geom/coarse_cylinder_tri.dat', grd, 1)
+  call quadgen('../../geom/circles.dat', grd, 1, dx, dy, idx, idy)
   call print_grid_props(grd)
 
   allocate(u(1, grd%nnodesg))
