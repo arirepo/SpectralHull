@@ -248,6 +248,8 @@ module quad_gen
 
          allocate(bc(j)%x(npt), bc(j)%y(npt), bc(j)%t(npt))
 
+         bc(j)%btype = btype
+ 
          print *, 'for bn_curves(',j,')'
          do i = 1, npt
             read(9,*,iostat=istat) bc(j)%x(i), bc(j)%y(i), zz
@@ -264,12 +266,12 @@ module quad_gen
 
          nc = size(bc(j)%x)
          if(.not. allocated(bc(j)%Mx))then
-           call spline_nurbs_alloc( bc(j)%Mx, bc(j)%My, bc(j)%a, bc(j)%b, bc(j)%c,&
-                                      & bc(j)%d, bc(j)%cp, bc(j)%dp, nc, bc(j)%btype)
+           call spline_nurbs_alloc( bc(j)%Mx, bc(j)%My, bc(j)%a, bc(j)%b, bc(j)%c &
+                                      , bc(j)%d, bc(j)%cp, bc(j)%dp, nc, bc(j)%btype)
          end if
          call spline_nurbs_comp(bc(j)%x, bc(j)%y,bc(j)%a, bc(j)%b, bc(j)%c, bc(j)%d &
-                            , bc(j)%cp, bc(j)%dp, bc(j)%Mx, bc(j)%My, bc(j)%t, &
-                            & mode, bc(j)%btype)
+                            , bc(j)%cp, bc(j)%dp, bc(j)%Mx, bc(j)%My, bc(j)%t &
+                            , mode, bc(j)%btype)
 
       end do
 
@@ -2851,6 +2853,7 @@ module quad_gen
       integer,      dimension(:), allocatable :: tbv
       integer :: nq, nnc, nnp, nnq
       integer :: i, j, n1, n2, n3, n4, q, k, bct, b
+      integer :: kk
 
       nnc = SUM(npb)
       allocate(tbv(be_ct))
@@ -2908,8 +2911,9 @@ module quad_gen
       do i = bpl(l), bpl(l + 1) - 1
         b = loops(i)
         j = npb(b) + 1
-        deallocate(bc(b)%x, bc(b)%y)
-        allocate(bc(b)%x(j), bc(b)%y(j))
+        deallocate(bc(b)%x, bc(b)%y, bc(b)%t)
+        allocate(bc(b)%x(j), bc(b)%y(j), bc(b)%t(j))
+        bc(b)%t = (/ (dble(kk), kk = 1, j) /)
         if(i < (bpl(l + 1) - 1))then
           bc(b)%x(:j) = bx(bct : bct + j - 1)
           bc(b)%y(:j) = by(bct : bct + j - 1)
@@ -2919,6 +2923,25 @@ module quad_gen
           bc(b)%x(j) = bx(1)
           bc(b)%y(j) = by(1)
         end if
+
+        if ( bc(b)%btype .eq. spline_i) then ! recalculate the weights
+           if ( allocated(bc(b)%Mx) ) deallocate( bc(b)%Mx )
+           if ( allocated(bc(b)%My) ) deallocate( bc(b)%My )
+           if ( allocated(bc(b)%a) )  deallocate( bc(b)%a )
+           if ( allocated(bc(b)%b) )  deallocate( bc(b)%b )
+           if ( allocated(bc(b)%c) )  deallocate( bc(b)%c )
+           if ( allocated(bc(b)%d) )  deallocate( bc(b)%d )
+           if ( allocated(bc(b)%cp) ) deallocate( bc(b)%cp )
+           if ( allocated(bc(b)%dp) ) deallocate( bc(b)%dp )
+
+           call spline_nurbs_alloc( bc(b)%Mx, bc(b)%My, bc(b)%a, bc(b)%b &
+                , bc(b)%c, bc(b)%d, bc(b)%cp, bc(b)%dp, size(bc(b)%x), bc(b)%btype)
+
+           call spline_nurbs_comp(bc(b)%x, bc(b)%y,bc(b)%a, bc(b)%b, bc(b)%c &
+                , bc(b)%d, bc(b)%cp, bc(b)%dp, bc(b)%Mx, bc(b)%My, bc(b)%t &
+                , 'natural', bc(b)%btype)
+        end if
+
         bct = bct + j - 1
       end do
 
