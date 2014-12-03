@@ -52,7 +52,11 @@ module quad_gen
 
       ! create mixed element quad/tri mesh ... 
       call read_segment_file(inputfile, bc, nb, btype)
-      call create_grid(g, bc, nb, x, y, g%b_edges, g%b_vals, g%n_b_edges, g%be_elem, newdx, newdy, newidx, newidy, splitflag)
+      if ( present( splitflag) ) then
+         call create_grid(g, bc, nb, x, y, g%b_edges, g%b_vals, g%n_b_edges, g%be_elem, newdx, newdy, newidx, newidy, splitflag)
+      else
+         call create_grid(g, bc, nb, x, y, g%b_edges, g%b_vals, g%n_b_edges, g%be_elem, newdx, newdy, newidx, newidy)
+      end if
       call get_node_to_quad(g%nn, g%elem, g%etype, g%flag, g%elemidx, nntoc, ntoc)
       call get_e2e(g%elem, g%elemidx, g%etype, nntoc, ntoc, g%e2e)
 
