@@ -3,6 +3,8 @@ module grid_opt
   use ncc_triangle
   use spline
   use fem_reordering
+  use quadri_elem
+
   ! use ifport
 
   ! performs grid operations
@@ -58,6 +60,8 @@ module grid_opt
      integer :: nnodesg0, ncellsg0, nbedgeg0 !initial config before hp-adapt
 
      type(master_elem), dimension(:), allocatable :: maselem
+
+     character(len = 2) :: galtype ! Galerkin type, = DG .or. PG
 
   end type grid
 
@@ -1078,11 +1082,13 @@ contains
   
   ! eltypein = 0 : Lagrange elements
   !          = 1 : Chebyshev (fekete) elements
-  subroutine add_more_points(grd, pin, eltypein, tolerance)
+  subroutine add_more_points(grd, pin, eltypein, tolerance, galtype, n1, n2)
     implicit none
     type(grid), intent(inout) :: grd
     integer, dimension(:), intent(in) :: pin, eltypein
     real*8, intent(in) :: tolerance
+    character(len = 2), intent(in), optional :: galtype ! Galerkin type = PG, DG
+    integer, dimension(:), optional :: n1, n2
 
     ! local vars
     integer :: j, k, ntri
@@ -1093,6 +1099,7 @@ contains
     real*8, dimension(:), allocatable :: w, xnew, ynew 
     real*8, dimension(:,:), allocatable :: xy, rtmp 
     integer :: li ! last index
+    integer :: tn1, tn2
 
     ! init
     ntri = grd%ntri
@@ -1104,11 +1111,11 @@ contains
             , ' equal to the current config. no midification is done!'
        return
     end if
-    if(grd%nquad4 .ne. 0 ) then
-       print *, 'current version of p-refinement is only for triangles. quads were' &
-            , '  found in the gird! stop.'
-       stop
-    end if
+    ! if(grd%nquad4 .ne. 0 ) then
+    !    print *, 'current version of p-refinement is only for triangles. quads were' &
+    !         , '  found in the gird! stop.'
+    !    stop
+    ! end if
 
     ! resize(reset) everything if previously 
     ! made high-order (nnodesg and ncellsg change as a flag)
@@ -1127,12 +1134,20 @@ contains
     ! that would be inserted per element after this.
     ! then resize "grd" structure accordingly
     pmax = maxval(grd%p)
-    ! compute the maximum number of points per element and edge
-    call p2node(pmax, npemax, npedmax)
-    ! resize grd%icon
-    allocate(tmp(ntri, npemax))
-    tmp = -1
-    tmp(:,1:3) = grd%icon
+    if ( grd%nquad4 .eq. 0 ) then ! do it the old way
+       ! compute the maximum number of points per element and edge
+       call p2node(pmax, npemax, npedmax)
+       ! resize grd%icon
+       allocate(tmp(ntri, npemax))
+       tmp = -1
+       tmp(:,1:3) = grd%icon
+    else ! mixed element
+       npemax = (pmax + 1)**2
+       ! resize grd%icon
+       allocate(tmp(grd%ncellsg, npemax))
+       tmp = -1
+       tmp(:,1:4) = grd%icon
+    end if
     call move_alloc(tmp, grd%icon)
 
     ! snap boundary points to the boundary curves
@@ -1141,8 +1156,11 @@ contains
     print *, 'done snapping!'
 
     ! now start to fill everything required
-    do j = 1, grd%ntri   
+    do j = 1, grd%ncellsg   
 
+select case ( grd%elname(j) )
+
+case (GEN_TRIANGLE )
        ! first compute the master element coordinates 
        ! of high-order points 
        if ( grd%eltype(j) .eq. 0 ) then !lagrange triangles
@@ -1214,8 +1232,53 @@ contains
        ! clean-ups
        deallocate(xy, w, xnew, ynew)
 
+case (GEN_QUADRI)
 
-    end do
+   ! compute directional point distribution for this quad elem 
+   if( present(n1) .and. present(n2) ) then
+      tn1 = n1(j); tn2 = n2(j)
+      ! check see if n1 and n2 are consistent ...
+      if ( (tn1 * tn2) .ne. (grd%p(j) + 1)**2 ) then
+         print *, 'n1(',j, ') and n2(',j,',) are not consistent with given <p(j)>! stop'
+         stop
+      end if
+   else
+      tn1 = (grd%p(j) + 1)
+      tn2 = tn1
+   end if
+
+   ! compute points per element
+   grd%npe(j) = tn1 * tn2
+
+   ! allocate space for tmp arrays
+   allocate( xy(2,grd%npe(j)), w(grd%npe(j)) &
+        , xnew(grd%npe(j)), ynew(grd%npe(j)) )
+
+   ! compute the master element coordinates 
+   ! of high-order points 
+   if (allocated(grd%maselem(j)%xi)  ) deallocate(grd%maselem(j)%xi)
+   if (allocated(grd%maselem(j)%eta) ) deallocate(grd%maselem(j)%eta)
+   if ( grd%eltype(j) .eq. 0 ) then !lagrange quad
+      call gen_master_quadri(tn1, tn2, -1.0d0, 1.0d0, -1.0d0, 1.0d0 &
+           , 'equal_space', grd%maselem(j)%xi, grd%maselem(j)%eta)
+   elseif ( grd%eltype(j) .eq. 1 ) then ! Chebyshev quad
+      call gen_master_quadri(tn1, tn2, -1.0d0, 1.0d0, -1.0d0, 1.0d0 &
+           , 'cheby', grd%maselem(j)%xi, grd%maselem(j)%eta)
+   else
+      print *, 'unknown element type for quad! stop'
+      stop
+   end if
+   xy(1, :) = grd%maselem(j)%xi
+   xy(2, :) = grd%maselem(j)%eta
+
+
+case default
+print *, 'unknown element name in add_more_points(...)! stop'
+stop
+
+end select
+
+end do
 
     ! fix the e2e map if any changes is made 
     ! in "transform_elem" in the winding of the
@@ -1237,15 +1300,16 @@ contains
     type(grid), intent(inout) :: grd
 
     ! local vars
+    integer :: i 
     real*8, dimension(:), allocatable :: rtmp !real tmp
     integer, dimension(:,:), allocatable :: tmp
 
-    ! bullet proofing
-    if ( grd%nquad4 .ne. 0 ) then
-       print *, 'current version of reset_grid(...) is only' &
-              , ' for triangle. some quad elems were found! stop'
-       stop
-    end if
+    ! ! bullet proofing
+    ! if ( grd%nquad4 .ne. 0 ) then
+    !    print *, 'current version of reset_grid(...) is only' &
+    !           , ' for triangle. some quad elems were found! stop'
+    !    stop
+    ! end if
 
     ! resize x, y
     allocate(rtmp(grd%nnodesg0))
@@ -1263,19 +1327,41 @@ contains
     deallocate(rtmp)
 
     ! resize grd%icon
-    allocate(tmp(grd%ncellsg0, 3))
-    tmp = grd%icon(:,1:3)
+    if (grd%nquad4 .eq. 0) then ! old way
+
+       allocate(tmp(grd%ncellsg0, 3))
+       tmp = grd%icon(:,1:3)
+
+    else
+
+       allocate(tmp(grd%ncellsg0, 4))
+       tmp = 0
+       do i = 1, grd%ncellsg0
+
+          select case ( grd%elname(i) )
+          case (GEN_TRIANGLE)
+             tmp(i, 1:3) = grd%icon(i,1:3)
+          case (GEN_QUADRI) 
+             tmp(i, 1:4) = grd%icon(i,1:4)
+          case default
+             print *, 'unknown element name in reset_grid(...)! stop'
+             stop
+          end select
+
+       end do
+
+    end if
+
     call move_alloc(tmp, grd%icon)
+
 
     ! reset everything else back to its original 
     ! status
     grd%nnodesg = grd%nnodesg0
     grd%ncellsg = grd%ncellsg0
-    grd%ntri = grd%ncellsg0 
-    grd%nquad4 = 0
+    grd%nbedgeg = grd%nbedgeg0 
     grd%p = 1
     grd%eltype = 0
-    grd%npe = 3
 
     ! done here
   end subroutine reset_grid
@@ -1411,7 +1497,7 @@ contains
     allocate(snapped(grd%nnodesg))
     snapped = .false. ! nothing snapped yet!
 
-    do elem = 1, grd%ntri
+    do elem = 1, grd%ncellsg
 
        ! first determine points 1, 2 
        ! on the boundary edge of this element
