@@ -27,7 +27,7 @@ program tester
 
   ! testing type(grid) convertor
 ! call quadgen('../../geom/coarse_cylinder_tri.dat', grd, 1)
-  call quadgen('../../geom/circles.dat', grd, 1, dx, dy, idx, idy)
+  call quadgen('../../geom/circles.dat', grd, 1, dx, dy, idx, idy, 1)
   call print_grid_props(grd)
 
   allocate(u(1, grd%nnodesg))

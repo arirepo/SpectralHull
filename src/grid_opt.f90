@@ -54,12 +54,16 @@ module grid_opt
      integer, dimension(:,:), allocatable :: el2bn ! element to boundary map
      type(edges), dimension(:), allocatable :: el2edg
 
-     integer, dimension(:), allocatable :: p, eltype, npe
+     integer, dimension(:), allocatable :: p, eltype, npe, elname, skleton_pts 
      integer :: nnodesg0, ncellsg0, nbedgeg0 !initial config before hp-adapt
 
      type(master_elem), dimension(:), allocatable :: maselem
 
   end type grid
+
+  ! enumerate types for element names grd%elname
+  !
+  integer, parameter, public :: GEN_TRIANGLE = 1, GEN_QUADRI = 2
 
   ! public data structure
   public :: grid, curve
@@ -325,7 +329,6 @@ contains
     ! done here 
   end subroutine print_grid_props
 
-
   ! writes the unstructured grid + solution to 
   ! Tecplot format.
   ! the format of 'u' is assumed to be:  
@@ -340,15 +343,13 @@ contains
     logical, optional :: appendit
 
     ! local vars
-    integer i, j, jmax, neqs, nnodesg 
+    integer :: i, j, k, neqs, nnodes
+
     ! init
     neqs = size(u,1)
-    nnodesg = size(u,2)
-
-    ! error checking
-    if (nnodesg .ne. grd%nnodesg) then
-       print *,' error in write_u_tecplot(...) : nnodesg of '&
-              ,' [u] is not equal to grd%nnonesg!. stop'
+    nnodes = size(u,2) 
+    if ( nnodes .ne. grd%nnodesg ) then
+       print *, 'nnodes .ne. grd%nnodesg! something is wrong! stop'
        stop
     end if
 
@@ -371,45 +372,63 @@ contains
        write(10, '(A, I1, A)', advance = 'no') ', "u', i,'"'
     end do
 
-    write(10,*)
+    write(10,*) ! new line!
+
+
     write(10, '(A, I7, A, I7, A, A)', advance = 'no') 'zone n = ' &
-            , grd%nnodesg, ', e = ', grd%ncellsg, ', f = fepoint, ' &
-            , 'et ='
-    
-    if ( (grd%ntri .ne. 0) .and. (grd%nquad4 .eq. 0) ) then
-       write(10, *) 'triangle'
-       jmax = 3
-    elseif ( (grd%ntri .eq. 0) .and. (grd%nquad4 .ne. 0) ) then
-       write(10, *) 'quadrilateral'
-       jmax = 4
-    else
-       print *, 'can not export mixed element grid to ' &
-            , 'tecplot format at this version. stop.'
-       stop
-    end if
+         , nnodes, ', e = ', grd%ncellsg, ', f = fepoint, ' &
+         , 'et = quadrilateral'
+    write(10,*) ! new line!
 
     ! write coordinates and values of the vector field [u]
-    do i = 1, nnodesg
-       write(10, '(F30.17, A, F30.17)', advance = 'no') grd%x(i), ' ',  grd%y(i)
+    do k = 1, nnodes
+
+       write(10, '(F30.17, A, F30.17)', advance = 'no') &
+            grd%x(k), ' ',  grd%y(k)
        do j = 1, neqs
-          write(10, '(A, F30.17)', advance = 'no') ' ',  u(j,i)
+          write(10, '(A, F30.17)', advance = 'no') ' ',  u(j,k)
        end do
-       write(10,*) 
+
+       write(10,*)
+ 
     end do
 
     ! writing the connectivity matrix
     write(10, *)
-    do i = 1, grd%ncellsg
-       do j = 1, jmax 
-          write(10, '(A, I7)', advance = 'no') ' ',  grd%icon(i,j)
-       end do
-       write(10,*)
-    end do
 
+    if ( grd%nquad4 .eq. 0 ) then ! do old way
+       do k = 1, grd%ntri
+          write(10, *) ' ',  grd%icon(k,1) &
+               , ' ',  grd%icon(k,2), ' ',  grd%icon(k,3) &
+               , ' ',  grd%icon(k,3)
+       end do
+
+    else
+
+       do k = 1, grd%ncellsg
+          select case ( grd%elname(k) )
+          case ( GEN_TRIANGLE )
+             write(10, *) ' ',  grd%icon(k,1) &
+                  , ' ',  grd%icon(k,2), ' ',  grd%icon(k,3) &
+                  , ' ',  grd%icon(k,3)
+          case ( GEN_QUADRI ) 
+             write(10, *) ' ',  grd%icon(k,1) &
+                  , ' ',  grd%icon(k,2), ' ',  grd%icon(k,3) &
+                  , ' ',  grd%icon(k,4)
+          case default
+             print *, 'unknown name of element! stop'
+             stop
+          end select
+       end do
+
+    end if
+
+    ! close the output file
     close(10)
 
     ! done here
   end subroutine write_u_tecplot
+
 
   ! writes cell-centered data to tecplot
   ! USE ONLY FOR ONE CELL CENTER (GAUSS POINT)

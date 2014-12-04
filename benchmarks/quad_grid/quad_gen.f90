@@ -1,7 +1,7 @@
 module quad_gen
   use globals
   use spline
-  use grid_opt, only : curve, grid
+  use grid_opt, only : curve, grid, GEN_TRIANGLE, GEN_QUADRI
 
   implicit none
 
@@ -34,7 +34,7 @@ module quad_gen
       type(grid), intent(inout) :: grd
       integer, intent(in) :: btype ! nurbs_i or spline_i
       real(rk), intent(in out) :: newdx, newdy, newidx, newidy
-      integer, optional, intent(in out) :: splitflag
+      integer, optional, intent(in) :: splitflag
 
       ! local vars
       integer :: ii, jj, nq, nt, nb, i1, i2
@@ -130,6 +130,8 @@ module quad_gen
 
       allocate(grd%p(grd%ncellsg)); grd%p = 1
       allocate(grd%eltype(grd%ncellsg), grd%npe(grd%ncellsg))
+      allocate(grd%elname(grd%ncellsg), grd%skleton_pts(grd%ncellsg))
+
       do ii = 1, grd%ncellsg
 
          grd%npe(ii) = g%etype(ii)
@@ -138,9 +140,13 @@ module quad_gen
 
          case (triangle)
             grd%eltype(ii) = 0 ! lagrange basic p1 triangle
+            grd%elname(ii) = GEN_TRIANGLE
+            grd%skleton_pts(ii) = 3
 
          case (quadrilateral)
             grd%eltype(ii) = 2 ! lagrange basic p1 quadri
+            grd%elname(ii) = GEN_QUADRI
+            grd%skleton_pts(ii) = 4
 
          case default
             print *, 'incorrect element type in quadgen! stop'
