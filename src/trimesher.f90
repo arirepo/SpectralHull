@@ -193,6 +193,9 @@ contains
        grd%ibedgeBC(ii) = new_segmentmarkerlist(ii)
     end do
 
+    if ( .not. allocated(grd%elname)  ) allocate(grd%elname(grd%ncellsg))
+    grd%elname = GEN_TRIANGLE ! by default
+
     ! implement ibedgeELEM ??? here
     call bnedge2elem(grd)
     grd%meshFile = 'nofile'
@@ -250,9 +253,6 @@ contains
 
     if ( .not. allocated(grd%npe)  ) allocate(grd%npe(grd%ncellsg))
     grd%npe = npe
-
-    if ( .not. allocated(grd%elname)  ) allocate(grd%elname(grd%ncellsg))
-    grd%elname = GEN_TRIANGLE ! by default
 
     if ( .not. allocated(grd%skleton_pts)  ) allocate(grd%skleton_pts(grd%ncellsg))
     grd%skleton_pts = 3 ! points in triangle skleton !

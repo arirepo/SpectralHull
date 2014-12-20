@@ -68,6 +68,7 @@ module grid_opt
   ! enumerate types for element names grd%elname
   !
   integer, parameter, public :: GEN_TRIANGLE = 1, GEN_QUADRI = 2
+  real*8, parameter :: piecewise_tol = 1.0d-9
 
   ! public data structure
   public :: grid, curve
@@ -1174,7 +1175,16 @@ end select
        ! resize grd%icon
        allocate(tmp(grd%ncellsg, npemax))
        tmp = -1
-       tmp(:,1:4) = grd%icon
+
+       do k = 1, grd%ncellsg
+          select case (grd%elname(k))
+          case (GEN_TRIANGLE)
+             tmp(k,1:3) = grd%icon(k,1:3)
+          case (GEN_QUADRI)
+             tmp(k,1:4) = grd%icon(k,1:4)
+          end select
+       end do
+
     end if
     call move_alloc(tmp, grd%icon)
 
@@ -1241,7 +1251,8 @@ case (GEN_TRIANGLE )
 
        ! store master element (xi, eta) interpolation points
        ! for any future use
-       deallocate(grd%maselem(j)%xi, grd%maselem(j)%eta)
+   if (allocated(grd%maselem(j)%xi)  ) deallocate(grd%maselem(j)%xi)
+   if (allocated(grd%maselem(j)%eta) ) deallocate(grd%maselem(j)%eta)
        allocate(grd%maselem(j)%xi(grd%npe(j)), grd%maselem(j)%eta(grd%npe(j)) )
        grd%maselem(j)%xi  = xy(1,:)
        grd%maselem(j)%eta = xy(2,:)
@@ -1633,6 +1644,7 @@ end do
     real*8, dimension(:), pointer :: t, xs, ys
     character(len=*), parameter :: opt = 'interp'
     integer :: i, edgnum
+    real*8 :: tangx, tangy, norm_tang, tmpx, tmpy
 
     ! first determine points 1, 2, 3
     tag = grd%el2bn(elem, 1)
@@ -1669,6 +1681,11 @@ end do
     x3_x = grd%x(pt3)
     x3_y = grd%y(pt3)
 
+    ! find tangential vector to side y1
+norm_tang = sqrt( (grd%x(pt2) - grd%x(pt1))**2.0d0 + (grd%y(pt2) - grd%y(pt1))**2.0d0 )
+tangx = (grd%x(pt2) - grd%x(pt1)) / norm_tang
+tangy = (grd%y(pt2) - grd%y(pt1)) / norm_tang
+
     ! compute Cx, Cy
     if( tag .eq. 0 ) then ! no curve bn
        Cx = x1_x + xi * (x2_x - x1_x)
@@ -1682,8 +1699,14 @@ end do
        nc = size(xs)
 
        ! find_t(grd, tag, x, y, tol, t)
-       call find_t(grd, tag, grd%x(pt1), grd%y(pt1), tol, t1)
-       call find_t(grd, tag, grd%x(pt2), grd%y(pt2), tol, t2)
+tmpx = grd%x(pt1) + piecewise_tol * tangx
+tmpy = grd%y(pt1) + piecewise_tol * tangy 
+       call find_t(grd, tag, tmpx, tmpy, tol, t1)
+tmpx = grd%x(pt2) - piecewise_tol * tangx
+tmpy = grd%y(pt2) - piecewise_tol * tangy 
+       call find_t(grd, tag, tmpx, tmpy, tol, t2)
+t1 = dble(nint(t1))
+t2 = dble(nint(t2))
 
        tt = t1 + xi * (t2 - t1)
 
@@ -1760,6 +1783,7 @@ end do
     real*8 :: y1x, y1y, y3x, y3y
     real*8 :: area
     integer :: twist, pt_tmp
+    real*8 :: tangx, tangy, norm_tang, tmpx, tmpy
 
     ! first determine points 1, 2, 3, 4
     tag = grd%el2bn(elem, 1)
@@ -1825,6 +1849,11 @@ end do
     xx = grd%x(pt)
     yy = grd%y(pt)
 
+    ! find tangential vector to side y1
+norm_tang = sqrt( (xx(2) - xx(1))**2.0d0 + (yy(2) - yy(1))**2.0d0 )
+tangx = (xx(2) - xx(1)) / norm_tang
+tangy = (yy(2) - yy(1)) / norm_tang
+
     ! compute y1 or the possibly curved side
     if( tag .eq. 0 ) then ! no curve bn
        y1x = xx(1) + 0.5d0 * (xi + 1.0d0) * (xx(2) - xx(1))
@@ -1839,9 +1868,14 @@ end do
        nc = size(xs)
 
        ! find_t(grd, tag, x, y, tol, t)
-       call find_t(grd, tag, grd%x(pt(1)), grd%y(pt(1)), tol, t1)
-       call find_t(grd, tag, grd%x(pt(2)), grd%y(pt(2)), tol, t2)
-
+tmpx = xx(1) + piecewise_tol * tangx
+tmpy = yy(1) + piecewise_tol * tangy 
+       call find_t(grd, tag, tmpx, tmpy, tol, t1)
+tmpx = xx(2) - piecewise_tol * tangx
+tmpy = yy(2) - piecewise_tol * tangy 
+       call find_t(grd, tag, tmpx, tmpy, tol, t2)
+t1 = dble(nint(t1))
+t2 = dble(nint(t2))
        tt = t1 + 0.5d0 * (xi + 1.0d0) * (t2 - t1)
 
        call spline_nurbs_eval2(tt, xs, ys, tcurve%a, tcurve%b, tcurve%c &
@@ -1854,7 +1888,7 @@ end do
 
     x = (eta + 1.0d0) / 2.0d0 * y3x - (eta - 1.0d0) / 2.0d0 * y1x
     y = (eta + 1.0d0) / 2.0d0 * y3y - (eta - 1.0d0) / 2.0d0 * y1y
-
+  
     ! done here
   end subroutine transform_elem_quadri
 

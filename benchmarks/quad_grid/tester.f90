@@ -28,14 +28,14 @@ program tester
 
   ! testing type(grid) convertor
 ! call quadgen('../../geom/coarse_cylinder_tri.dat', grd, 1)
-  call quadgen('../../geom/circles.dat', grd, 1, dx, dy, idx, idy)
+  call quadgen('../../geom/circles.dat', grd, 1, dx, dy, idx, idy, 1)
   call print_grid_props(grd)
   call visual_curved_bonds('./bnd.dat', grd, 10)
 
 
   ! subroutine add_more_points(grd, pin, eltypein, tolerance, galtype, n1, n2)
   allocate(pin(grd%ncellsg), eltypein(grd%ncellsg))
-  pin = 6
+  pin = 9
   eltypein = 1
   call add_more_points(grd, pin, eltypein, 1.0d-12, 'PG')
 
