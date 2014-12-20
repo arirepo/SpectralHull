@@ -164,6 +164,8 @@ module quad_gen
       ! high-order grid generation subroutines.
       allocate(grd%maselem(grd%ncellsg))
 
+      grd%galtype = 'PG' !Petrov-Galerkin by default
+
       ! clean ups
       if (allocated(elem)) deallocate(elem)
       if (allocated(elemidx)) deallocate(elemidx)

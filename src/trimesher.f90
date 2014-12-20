@@ -278,6 +278,8 @@ contains
 
     end if
 
+    grd%galtype = 'PG' !Petrov-Galerkin by default
+
     ! done here
   end subroutine meshit
 

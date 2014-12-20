@@ -23,7 +23,7 @@ module grid_opt
   end type master_elem
   
   type edges
-     integer, dimension(:) , allocatable :: edg1, edg2, edg3
+     integer, dimension(:) , allocatable :: edg1, edg2, edg3, edg4
   end type edges
 
   type curve
@@ -774,24 +774,31 @@ contains
     ! local vars
     integer :: i, pt1, pt2
 
-    ! no mixed element, although it is very
-    ! easy to extend it :)
-    if (grd%nquad4 .ne. 0 ) then
-       print *, 'sorry! create_e2e() is for a full trimesh grid in this version.' &
-            , ' some quads were found in FEM grid. stop.'
-       stop
-    end if
+    ! ! no mixed element, although it is very
+    ! ! easy to extend it :)
+    ! if (grd%nquad4 .ne. 0 ) then
+    !    print *, 'sorry! create_e2e() is for a full trimesh grid in this version.' &
+    !         , ' some quads were found in FEM grid. stop.'
+    !    stop
+    ! end if
 
     ! allocate
     if ( allocated(grd%e2e) ) then
        print *, 'warning : e2e in fem-grid is already initialized!'
-       return
+       deallocate(grd%e2e)
+    end if
+
+    if (grd%nquad4 .eq. 0 ) then !only tri, old way!
+       allocate(grd%e2e(grd%ncellsg, 3))
     else
-       allocate(grd%e2e(grd%ntri, 3))
+       allocate(grd%e2e(grd%ncellsg, 4))
     end if
 
     ! create e2e map
     do i = 1, size(grd%icon,1)
+
+select case (grd%elname(i))
+case (GEN_TRIANGLE) 
 
        ! neigh 1
        pt1 = grd%icon(i,2); pt2 = grd%icon(i,3)
@@ -804,6 +811,26 @@ contains
        ! neigh 3
        pt1 = grd%icon(i,1); pt2 = grd%icon(i,2)
        grd%e2e(i,3) = find_elem_cont_pts(grd%icon, i, pt1, pt2)
+
+case (GEN_QUADRI)
+
+       ! neigh 1
+       pt1 = grd%icon(i,2); pt2 = grd%icon(i,3)
+       grd%e2e(i,1) = find_elem_cont_pts(grd%icon, i, pt1, pt2)
+
+       ! neigh 2
+       pt1 = grd%icon(i,3); pt2 = grd%icon(i,4)
+       grd%e2e(i,2) = find_elem_cont_pts(grd%icon, i, pt1, pt2)
+
+       ! neigh 3
+       pt1 = grd%icon(i,4); pt2 = grd%icon(i,1)
+       grd%e2e(i,3) = find_elem_cont_pts(grd%icon, i, pt1, pt2)
+
+       ! neigh 4
+       pt1 = grd%icon(i,1); pt2 = grd%icon(i,2)
+       grd%e2e(i,4) = find_elem_cont_pts(grd%icon, i, pt1, pt2)
+
+end select
 
     end do
 
@@ -1129,6 +1156,7 @@ contains
     ! set the order of accuracy and element type
     grd%p = pin
     grd%eltype = eltypein
+    if (present(galtype) ) grd%galtype = galtype
 
     ! before anything, compute the maximum number of points 
     ! that would be inserted per element after this.
@@ -1225,13 +1253,6 @@ case (GEN_TRIANGLE )
           call transform_elem(grd, j , xy(1,k), xy(2,k), xnew(k), ynew(k), tolerance)
        end do
 
-       ! now add the new points to the "grd" data structure if accepted
-       call add_xnew(grd, j , xy, xnew, ynew, tolerance)
-
-
-       ! clean-ups
-       deallocate(xy, w, xnew, ynew)
-
 case (GEN_QUADRI)
 
    ! compute directional point distribution for this quad elem 
@@ -1271,12 +1292,27 @@ case (GEN_QUADRI)
    xy(1, :) = grd%maselem(j)%xi
    xy(2, :) = grd%maselem(j)%eta
 
+   ! already reordered!!! so proceed to
+   ! then transform to the physical element coordinates
+   ! using exact transformation
+   do k = 1, grd%npe(j)
+      ! subroutine transform_elem_quadri(grd, elem, xi, eta, x, y, tol)
+      call transform_elem_quadri(grd, j, xy(1,k), xy(2,k) &
+           , xnew(k), ynew(k), tolerance)
+   end do
 
 case default
 print *, 'unknown element name in add_more_points(...)! stop'
 stop
 
 end select
+
+       ! now add the new points to the "grd" data structure if accepted
+       call add_xnew(grd, j , xy, xnew, ynew, tolerance)
+
+
+       ! clean-ups
+       deallocate(xy, w, xnew, ynew)
 
 end do
 
@@ -1657,8 +1693,8 @@ end do
        ! print *, 't = ', t
        ! print *, 't1 = ', t1, 't2 = ', t2, 'tt = ', tt
 
-       call spline_nurbs_eval2(tt, xs, ys, tcurve%a, tcurve%b, tcurve%c, &
-                   & tcurve%Mx, tcurve%My, t, Cx, Cy, 'interp', tcurve%btype)
+       call spline_nurbs_eval2(tt, xs, ys, tcurve%a, tcurve%b, tcurve%c &
+                   , tcurve%Mx, tcurve%My, t, Cx, Cy, 'interp', tcurve%btype)
 !      call spline_eval2(t, xs, tt, Cx, opt, tcurve%Mx)
 !      call spline_eval2(t, ys, tt, Cy, opt, tcurve%My)
        ! print *, 'done computing C for curve ', tag
@@ -1680,9 +1716,196 @@ end do
     ! done here
   end subroutine transform_elem
 
+  ! =================================
+  ! ============  MAP ===============
+  ! =================================
+  !                <edge : y3>
+  !      (pt4) *-----------------* (pt3)
+  !            |                 |
+  !            |                 |
+  !            |                 |
+  !<edge : y4> |                 | <edge : y2>
+  !            | --     ------   |
+  !            |/  \   /      \  |
+  !            *   ----        --*
+  !         (pt1)  <edge : y1>  (pt2)
+  ! =================================
+  ! =================================
+
+  ! the edge y1 corresponding to the only curved side 
+  ! of the quad. Matches this curved side of the boundary
+  ! quads by replacing this with bn_curves structure.
+  ! Otherwise, if the quad element is an interior quad, use straight 
+  ! line definition. Refer to subroutine transform_elem(...)
+  ! to see how it is done for a triangle.   
+  
+  subroutine transform_elem_quadri(grd, elem, xi, eta, x, y, tol)
+    implicit none
+    type(grid), target, intent(inout) :: grd
+    integer, intent(in) :: elem
+    real*8, intent(in) :: xi, eta
+    real*8, intent(out) :: x, y
+    real*8, intent(in) :: tol
+
+    ! local vars
+    integer :: nc, tag
+    integer, dimension(4) :: pt
+    real*8, dimension(4) :: xx, yy
+    real*8 :: tt, t1, t2
+    type(curve), pointer :: tcurve => null()
+    real*8, dimension(:), pointer :: t => null(), xs => null(), ys => null()
+    character(len=*), parameter :: opt = 'interp'
+    integer :: i, edgnum, j, k
+    logical :: duplicate
+    real*8 :: y1x, y1y, y3x, y3y
+    real*8 :: area
+    integer :: twist, pt_tmp
+
+    ! first determine points 1, 2, 3, 4
+    tag = grd%el2bn(elem, 1)
+    if (tag .eq. 0) then ! interior
+       pt = grd%icon(elem, 1:4)
+
+    else ! boundary
+
+       edgnum  = grd%el2bn(elem, 2)
+       pt(1) = grd%ibedge(edgnum,1)
+       pt(2) = grd%ibedge(edgnum,2)
+
+       ! now find pt(3) and pt(4)
+       do k = 3, 4
+          do j = 1, 4
+             pt(k) = grd%icon(elem, j)
+             duplicate = .false. 
+             do i = 1, (k-1)          
+                if ( pt(k) .eq. pt(i) ) then
+                   duplicate = .true.
+                   exit             
+                end if
+             end do
+             if ( duplicate ) then
+                cycle
+             else
+                exit
+             end if
+          end do
+       end do
+
+    end if
+
+    ! see if the chosen points lead to
+    ! a good or twisted element, if
+    ! twisted then swap points 3, 4
+    ! to make it good element
+    !
+    ! subroutine comp_quad4_area(x, y, area, twist)
+    !
+    call comp_quad4_area(grd%x(pt), grd%y(pt), area, twist)
+    if ( twist .eq. 1 ) then ! twisted!
+
+       !swapping ...
+       pt_tmp = pt(4)
+       pt(4) = pt(3)
+       pt(3) = pt_tmp
+       ! double check
+       call comp_quad4_area(grd%x(pt), grd%y(pt), area, twist)
+       if (twist .eq. 1) then ! still twisted wow !!!
+          print *, 'the quad element #', elem, 'is twisted and cant be fixed! stop'
+          stop
+       end if
+
+    end if
+
+    ! updating physical elem winding to match with master elem
+    if( any(pt .ne. grd%icon(elem, 1:4)) ) then
+       grd%icon(elem, 1:4) = pt
+    end if
+
+    ! find coordinates
+    xx = grd%x(pt)
+    yy = grd%y(pt)
+
+    ! compute y1 or the possibly curved side
+    if( tag .eq. 0 ) then ! no curve bn
+       y1x = xx(1) + 0.5d0 * (xi + 1.0d0) * (xx(2) - xx(1))
+       y1y = yy(1) + 0.5d0 * (xi + 1.0d0) * (yy(2) - yy(1))
+
+    else ! do boundary curve interpolation
+
+       tcurve => grd%bn_curves(tag)
+       xs => tcurve%x
+       ys => tcurve%y
+       t  => tcurve%t
+       nc = size(xs)
+
+       ! find_t(grd, tag, x, y, tol, t)
+       call find_t(grd, tag, grd%x(pt(1)), grd%y(pt(1)), tol, t1)
+       call find_t(grd, tag, grd%x(pt(2)), grd%y(pt(2)), tol, t2)
+
+       tt = t1 + 0.5d0 * (xi + 1.0d0) * (t2 - t1)
+
+       call spline_nurbs_eval2(tt, xs, ys, tcurve%a, tcurve%b, tcurve%c &
+                   , tcurve%Mx, tcurve%My, t, y1x, y1y, 'interp', tcurve%btype)
+    end if
+
+    ! finalize the transformation
+    y3x = xx(4) + 0.5d0 * (xi + 1.0d0) * (xx(3) - xx(4))
+    y3y = yy(4) + 0.5d0 * (xi + 1.0d0) * (yy(3) - yy(4))
+
+    x = (eta + 1.0d0) / 2.0d0 * y3x - (eta - 1.0d0) / 2.0d0 * y1x
+    y = (eta + 1.0d0) / 2.0d0 * y3y - (eta - 1.0d0) / 2.0d0 * y1y
+
+    ! done here
+  end subroutine transform_elem_quadri
+
+  ! computes the area of a general quad4 and indicates
+  ! if it is twisted or not!
+  subroutine comp_quad4_area(x, y, area, twist)
+    implicit none
+    real*8, dimension(4), intent(in) :: x, y
+    real*8, intent(out) :: area
+    integer, intent(out) :: twist
+
+    ! local vars
+    real*8 :: area1, area2
+
+    area1 = tri_area(x( (/1, 2, 4/) ), y( (/1, 2, 4/) ) )
+    area2 = tri_area(x( (/2, 3, 4/) ), y( (/2, 3, 4/) ) )
+
+    area = area1 + area2
+
+    if ( (area1 > 0.0d0) .and. (area2 > 0.0d0) ) then
+       twist = 0
+    else
+       twist = 1
+    end if
+
+    ! done here
+  contains
+
+    function tri_area(xx, yy)
+      implicit none
+      real*8, dimension(3), intent(in) :: xx, yy
+      real*8 :: tri_area
+
+      ! local vars
+      real*8 :: ax, ay, bx, by
+
+      ax = xx(2) - xx(1)
+      ay = yy(2) - yy(1)
+
+      bx = xx(3) - xx(1)
+      by = yy(3) - yy(1)
+
+      tri_area = 0.5d0 * (ax * by - bx * ay)
+
+      ! done here
+    end function tri_area
+
+  end subroutine comp_quad4_area
+
   ! add new points "xnew", "ynew" in physical coordinates
-  ! to the current element "elem" if they don't exist in that
-  ! element and it neighbors with the given tolerance
+  ! to the current element "elem"
   subroutine add_xnew(grd, elem , xy, xnew, ynew, tolerance)
     implicit none
     type(grid), intent(inout) :: grd
@@ -1696,26 +1919,40 @@ end do
     real*8 :: x, y
     integer :: exists
     real*8, dimension(:), allocatable :: rtmp
-
+    integer :: max_neigh
 
     ! init
-    indx = 4 
+    select case ( grd%elname(elem) )
+
+    case ( GEN_TRIANGLE)
+       indx = 4
+       max_neigh = 3
+ 
+    case ( GEN_QUADRI)
+       indx = 5
+       max_neigh = 4
+
+    end select
 
     do j = 1, size(xnew)
        x = xnew(j); y = ynew(j)
        ! check to see if the point already exist 
        ! in the element itself 
        exists = does_point_exist(grd, elem, x, y, tolerance)
-       if ( exists .ne. -1 ) go to 200 ! oh! exists and is one of 3 vertices
-       ! check if the point exists in the neighbors of elem
-       do i = 1, 3
-          neigh = grd%e2e(elem, i)
-          if ( neigh .eq. -1) cycle ! wall! 
-          exists = does_point_exist(grd, neigh, x, y, tolerance)
-          if ( exists .ne. -1 ) go to 100
-       end do
+       if ( exists .ne. -1 ) go to 200 ! oh! exists and is one of skleton vertices
+       ! only for PG, check if the point exists in the neighbors of elem
+       ! if exist, don't update x, y and simply just add it to connectivities
+       if ( grd%galtype .eq. 'PG') then
+          do i = 1, max_neigh
+             neigh = grd%e2e(elem, i)
+             if ( neigh .eq. -1) cycle ! wall! 
+             exists = does_point_exist(grd, neigh, x, y, tolerance)
+             if ( exists .ne. -1 ) go to 100
+          end do
+       end if
+       !
        ! point (x,y) not in element and neighbors. well :) add it then!
-
+       !
        ! 1- add to grd%x grd%y
        npts = grd%nnodesg + 1
        ! add x
@@ -1738,42 +1975,75 @@ end do
        indx = indx + 1
 
 200    continue ! add to edges
-       
-       if  (  (abs(xy(1, j) - 0.0d0) <= tolerance)  .and. & !xi  = 0
-            (abs(xy(2, j) - 0.0d0) <= tolerance)  ) then  !eta = 0
-          ! ! add_pt2edg(edg, pt)
-          ! call add_pt2edg(edg = grd%el2edg(elem)%edg1, pt = exists)
-          ! call add_pt2edg(edg = grd%el2edg(elem)%edg3, pt = exists)
 
-       elseif (  (abs(xy(1, j) - 1.0d0) <= tolerance)  .and. & !xi  = 1
-            (abs(xy(2, j) - 0.0d0) <= tolerance)  ) then  !eta = 0
+       select case ( grd%elname(elem) )
 
-          ! call add_pt2edg(edg = grd%el2edg(elem)%edg1, pt = exists)
-          ! call add_pt2edg(edg = grd%el2edg(elem)%edg2, pt = exists)
+       case (GEN_TRIANGLE)       
 
-       elseif (  (abs(xy(1, j) - 0.0d0) <= tolerance)  .and. & !xi  = 0
-            (abs(xy(2, j) - 1.0d0) <= tolerance)  ) then  !eta = 1
+          if  (  (abs(xy(1, j) - 0.0d0) <= tolerance)  .and. & !xi  = 0
+               (abs(xy(2, j) - 0.0d0) <= tolerance)  ) then  !eta = 0
 
-          ! call add_pt2edg(edg = grd%el2edg(elem)%edg2, pt = exists)
-          ! call add_pt2edg(edg = grd%el2edg(elem)%edg3, pt = exists)
+          elseif (  (abs(xy(1, j) - 1.0d0) <= tolerance)  .and. & !xi  = 1
+               (abs(xy(2, j) - 0.0d0) <= tolerance)  ) then  !eta = 0
 
-       elseif (  (abs(xy(1, j) - 0.0d0) <= tolerance)  ) then !xi  = 0
+          elseif (  (abs(xy(1, j) - 0.0d0) <= tolerance)  .and. & !xi  = 0
+               (abs(xy(2, j) - 1.0d0) <= tolerance)  ) then  !eta = 1
 
-          call add_pt2edg(edg = grd%el2edg(elem)%edg3, pt = exists)
+          elseif (  (abs(xy(1, j) - 0.0d0) <= tolerance)  ) then !xi  = 0
 
-       elseif (  (abs(xy(2, j) - 0.0d0) <= tolerance)  ) then !eta  = 0
+             call add_pt2edg(edg = grd%el2edg(elem)%edg3, pt = exists)
 
-          call add_pt2edg(edg = grd%el2edg(elem)%edg1, pt = exists)
+          elseif (  (abs(xy(2, j) - 0.0d0) <= tolerance)  ) then !eta  = 0
 
-       elseif (  (abs(xy(1, j) + xy(2, j) - 1.0d0) <= tolerance)  ) then !xi + eta  = 1
+             call add_pt2edg(edg = grd%el2edg(elem)%edg1, pt = exists)
 
-          call add_pt2edg(edg = grd%el2edg(elem)%edg2, pt = exists)
+          elseif (  (abs(xy(1, j) + xy(2, j) - 1.0d0) <= tolerance)  ) then 
+             !xi + eta  = 1
+             call add_pt2edg(edg = grd%el2edg(elem)%edg2, pt = exists)
 
-       else
+          else
 
-          ! do nothing in this version
-          
-       end if
+             ! do nothing in this version
+
+          end if
+
+       case (GEN_QUADRI)
+
+          if  (  (abs(xy(1, j) + 1.0d0) <= tolerance)  .and. & !xi  = -1
+               (abs(xy(2, j) + 1.0d0) <= tolerance)  ) then  !eta = -1
+
+          elseif (  (abs(xy(1, j) - 1.0d0) <= tolerance)  .and. & !xi  = 1
+               (abs(xy(2, j) + 1.0d0) <= tolerance)  ) then  !eta = -1
+
+          elseif (  (abs(xy(1, j) - 1.0d0) <= tolerance)  .and. & !xi  = 1
+               (abs(xy(2, j) - 1.0d0) <= tolerance)  ) then  !eta = 1
+
+          elseif (  (abs(xy(1, j) + 1.0d0) <= tolerance)  .and. & !xi  = -1
+               (abs(xy(2, j) - 1.0d0) <= tolerance)  ) then  !eta = 1
+
+          elseif (  abs(xy(1, j) + 1.0d0) <= tolerance  ) then !xi  = -1
+
+             call add_pt2edg(edg = grd%el2edg(elem)%edg4, pt = exists)
+
+          elseif (  abs(xy(1, j) - 1.0d0) <= tolerance  ) then !xi  = 1
+
+             call add_pt2edg(edg = grd%el2edg(elem)%edg2, pt = exists)
+
+          elseif (  abs(xy(2, j) + 1.0d0) <= tolerance  ) then !eta  = -1
+
+             call add_pt2edg(edg = grd%el2edg(elem)%edg1, pt = exists)
+
+          elseif (  abs(xy(2, j) - 1.0d0) <= tolerance  ) then !eta  = 1
+
+             call add_pt2edg(edg = grd%el2edg(elem)%edg3, pt = exists)
+
+          else
+
+             ! do nothing in this version
+
+          end if
+
+       end select
 
     end do ! next point in xnew
 
@@ -1846,7 +2116,7 @@ end do
 
     ! local vars
     integer :: i, pt1, pt2, ielem
-    integer :: ps1, ps2, ps3
+    integer :: ps1, ps2, ps3, ps4
 
     ! bulletproofing
     if ( .not. allocated(grd%ibedgeELEM_local_edg) ) then
@@ -1863,26 +2133,56 @@ end do
        ps1 = grd%icon(ielem, 1)
        ps2 = grd%icon(ielem, 2)
        ps3 = grd%icon(ielem, 3)
+       if ( grd%elname(ielem) .eq. GEN_QUADRI) ps4 = grd%icon(ielem, 4) 
 
-       if     (  (pt1 .eq. ps1) .and. &
-            (pt2 .eq. ps2) ) then
-          grd%ibedgeELEM_local_edg(i) = 1
+       select case ( grd%elname(ielem) )
 
-       elseif (  (pt1 .eq. ps2) .and. &
-            (pt2 .eq. ps3) ) then
-          grd%ibedgeELEM_local_edg(i) = 2
+       case ( GEN_TRIANGLE )
+          if     (  (pt1 .eq. ps1) .and. &
+               (pt2 .eq. ps2) ) then
+             grd%ibedgeELEM_local_edg(i) = 1
 
-       elseif (  (pt1 .eq. ps3) .and. &
-            (pt2 .eq. ps1) ) then
-          grd%ibedgeELEM_local_edg(i) = 3
+          elseif (  (pt1 .eq. ps2) .and. &
+               (pt2 .eq. ps3) ) then
+             grd%ibedgeELEM_local_edg(i) = 2
 
-       else
-          print *, 'fatal : the edge with nodes ibedge(i,:) = [' &
-               , grd%ibedge(i, :), '] does not match any edges' &
-               , ' in element #', ielem,'. stop'
-          stop
+          elseif (  (pt1 .eq. ps3) .and. &
+               (pt2 .eq. ps1) ) then
+             grd%ibedgeELEM_local_edg(i) = 3
 
-       end if
+          else
+             print *, 'fatal : the edge with nodes ibedge(i,:) = [' &
+                  , grd%ibedge(i, :), '] does not match any edges' &
+                  , ' in tri element #', ielem,'. stop'
+             stop
+
+          end if
+       case ( GEN_QUADRI )
+          if     (  (pt1 .eq. ps1) .and. &
+               (pt2 .eq. ps2) ) then
+             grd%ibedgeELEM_local_edg(i) = 1
+
+          elseif (  (pt1 .eq. ps2) .and. &
+               (pt2 .eq. ps3) ) then
+             grd%ibedgeELEM_local_edg(i) = 2
+
+          elseif (  (pt1 .eq. ps3) .and. &
+               (pt2 .eq. ps4) ) then
+             grd%ibedgeELEM_local_edg(i) = 3
+
+          elseif (  (pt1 .eq. ps4) .and. &
+               (pt2 .eq. ps1) ) then
+             grd%ibedgeELEM_local_edg(i) = 4
+
+
+          else
+             print *, 'fatal : the edge with nodes ibedge(i,:) = [' &
+                  , grd%ibedge(i, :), '] does not match any edges' &
+                  , ' in quad element #', ielem,'. stop'
+             stop
+
+          end if
+       end select
 
     end do
 
