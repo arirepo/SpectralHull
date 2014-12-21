@@ -1,4 +1,5 @@
 module gen_basis
+  use grid_opt
   ! generates arbitrary 2D basis functions
   ! using Vandermonde matrix operations.
   implicit none
@@ -11,6 +12,8 @@ module gen_basis
      real*8, dimension(:,:), allocatable :: MT, M0
      integer, dimension(:), allocatable :: piv
      integer :: d
+     integer :: elname
+     procedure(gen_eval_M_pt), private, pointer, nopass  :: eval_M_pt
 
    contains
 
@@ -18,6 +21,15 @@ module gen_basis
      procedure, public :: eval => evaluate 
 
   end type basis
+  
+  abstract interface
+     subroutine gen_eval_M_pt(xx, yy, d, op, MT)
+       implicit none
+       real*8, intent(in) :: xx, yy
+       integer, intent(in) :: d, op  
+       real*8, dimension(:), intent(out) :: MT
+     end subroutine gen_eval_M_pt
+  end interface
 
   public :: basis
 
@@ -93,6 +105,82 @@ contains
     ! done here
   end subroutine comp_pascal_tri
 
+  ! computes basic polynomials for quad elem and also their derivatives
+  ! with respect to x, y.
+  !
+  ! inputs:
+  !
+  ! the terms are evaluated at PHYSICAL point (xx, yy) which can
+  ! be inside master element as a special case.
+  ! d is the degree of the 2d basis functions  
+  ! the operation: (0=poly), (1=dpoly/dx), (2=dpoly/dy)
+  !
+  ! outputs:
+  !
+  ! MT is a real vector containing all polynomial terms or
+  ! their derivatives d/dx or d/dy at point (xx, yy)
+  !
+  ! MT = [sum_{i=0}^d sum_{j=0}^d xx**i * yy**j]
+  !
+  subroutine comp_poly_quad(xx, yy, d, op, MT)
+    implicit none
+    real*8, intent(in) :: xx, yy
+    integer, intent(in) :: d, op  
+    real*8, dimension(:), intent(out) :: MT
+
+    ! local vars
+    integer :: id, i, j, jj
+
+    id = size(MT) !
+
+    ! bug checking
+    if ( id .ne. ( (d+1)**2 ) ) then
+       print *, 'the length of MT does not match with' &
+            , ' order of requested polynomials for quad! stop.'
+       stop
+    end if
+    if ( d < 1 ) then
+       print *, 'the degree of requested polynomials should be >= 1 for quad!'
+       stop
+    end if
+
+    ! fill it!    
+    jj = 1
+    do i = 0, d
+       do j = 0, d
+
+          if     ( op .eq. 0 ) then !poly terms
+             MT(jj) = (xx**i) * (yy**j)  
+          elseif ( op .eq. 1 ) then !d/dx of poly
+             if (i .eq. 0) then
+                MT(jj) = 0.0d0
+             else
+                MT(jj) = dble(i) * (xx**(i-1)) * (yy**j) 
+             end if
+          elseif ( op .eq. 2 ) then !d/dy of poly
+             if ( j .eq. 0) then
+                MT(jj) = 0.0d0
+             else
+                MT(jj) = (xx**i) * dble(j) * (yy**(j-1)) 
+             end if
+          else
+             print *, 'unknown operation in comp_poly_quad! stop.'
+             stop 
+          end if
+
+          jj = jj + 1
+       end do
+    end do
+
+    ! done here
+  end subroutine comp_poly_quad
+
+  ! --------------------------------------------
+  ! NOTE : The matrix "M" and its transpose "MT" 
+  ! used below, is in fact the matrix "V" used 
+  ! in module "approx_fekete". It is just different
+  ! symbols for the same thing! 
+  ! --------------------------------------------
   ! creates MT matrix and then
   ! performs LU factorization of MT matrix.
   ! later this will be used to solve the system and
@@ -128,7 +216,7 @@ contains
 
     ! start filling MT column wise
     do i = 1, id
-       call comp_pascal_tri(x(i), y(i), d, op, MT(:,i))
+       call this%eval_M_pt(x(i), y(i), d, op, MT(:,i))
     end do
 
     ! now, perform lu of MT and store in place
@@ -143,10 +231,11 @@ contains
 
   
   ! initializes the basis data type
-  subroutine initialize(this, x, y)
+  subroutine initialize(this, x, y, elname)
     implicit none
     class(basis), intent(inout) :: this
     real*8, dimension(:), intent(in) :: x, y
+    integer, intent(in) :: elname
 
     ! local vars
     integer :: id
@@ -163,17 +252,39 @@ contains
     !
     allocate(this%MT(id, id), this%M0(id, 1), this%piv(id))
     this%M0 = 0.0d0
+    this%elname = elname
 
     ! obtaining the degree of required polynomial
-    ! from the given number of points
-    delta = sqrt(1.0d0 + 8.0d0 * dble(id))
-    this%d = maxval( (/ nint(-1.5d0 + 0.5d0 * delta) &
-                      , nint(-1.5d0 - 0.5d0 * delta) /) )
+    ! from the given number of points and performing
+    ! element specific initialization
+    select case (this%elname)
+    case (GEN_TRIANGLE ) ! do it the old way
 
-    if ( this%d <= 0 ) then
-       print *, 'degree of basis is this%d <= 0! stop.'
+       delta = sqrt(1.0d0 + 8.0d0 * dble(id))
+       this%d = maxval( (/ nint(-1.5d0 + 0.5d0 * delta) &
+            , nint(-1.5d0 - 0.5d0 * delta) /) )
+
+       if ( this%d <= 0 ) then
+          print *, 'degree of basis is this%d <= 0! stop.'
+          stop
+       end if
+
+       ! initialize generic evaluation procedure pointer
+       this%eval_M_pt => comp_pascal_tri
+ 
+    case ( GEN_QUADRI )
+
+       this%d = nint(sqrt(dble(id))) - 1
+
+       ! initialize generic evaluation procedure pointer
+       this%eval_M_pt => comp_poly_quad
+
+    case default
+
+       print *, 'unregognized element name in init. basis func.! stop'
        stop
-    end if
+
+    end select
 
     ! fill MT matrice
     call comp_lu_MT(this, x, y)
@@ -215,7 +326,7 @@ contains
 
     ! first fill this%M0 column vector with
     ! pascal terms at point (x0, y0) according to the requested operation
-    call comp_pascal_tri(x0, y0, this%d, op, this%M0(:,1))
+    call this%eval_M_pt(x0, y0, this%d, op, this%M0(:,1))
 
     ! solve psi = basis = MT\M0 using already computed LU
     CALL DGETRS( 'No transpose', id, 1, this%MT, id, this%piv, this%M0, id, INFO )

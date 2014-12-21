@@ -111,7 +111,8 @@ contains
     deallocate(xy)
 
     ! initializing the basis functions and their derivatives
-    call elem%tbasis%init(grd%maselem(ielem)%xi, grd%maselem(ielem)%eta)
+    call elem%tbasis%init(grd%maselem(ielem)%xi, grd%maselem(ielem)%eta &
+         , grd%elname(ielem))
 
     allocate(elem%psi(npe,elem%ngauss) &
            , elem%d_psi_d_xi(npe,elem%ngauss) &
