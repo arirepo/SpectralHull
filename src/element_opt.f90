@@ -5,7 +5,7 @@ module element_opt
   use grid_opt
   use gen_basis
   use dunavant
-  use approx_fekete
+  use approx_fekete, only : fekete
 
   implicit none
 
@@ -57,14 +57,14 @@ contains
     implicit none
     type(element), intent(inout) :: elem
     integer, intent(in) :: ielem ! element number
-    type(grid), intent(in) :: grd
+    type(grid), intent(inout) :: grd
     integer, intent(in) :: neqs
 
     ! local vars
     integer :: i, p, rule, order_num, npe, degree
     real*8 :: x0, y0
     real*8, dimension(:,:), allocatable :: xy
-    type(fekete) :: tfekete
+    type(fekete)  :: tfekete
 
     if( elem%init_lock .eq. 1221360 ) then
        print *, 'error : the element #', ielem, ' is already initialized! stop'
@@ -112,8 +112,12 @@ contains
        deallocate(xy)
 
     case (GEN_QUADRI)
-       call tfekete%init(d = rule, name = 'quadri' &
+
+       call grd%tfekete_table%lookup(d = rule, name = 'quadri', fekete_out = tfekete &
             , spacing = 'equal_space', s = 3, echo = .true.)
+
+       ! call tfekete%init(d = rule, name = 'quadri' &
+       !      , spacing = 'equal_space', s = 3, echo = .true.)
        elem%ngauss = size(tfekete%w)
 
        ! allocate space for that
@@ -123,8 +127,8 @@ contains
        elem%s = tfekete%fin_coords(2, :)
        elem%W = tfekete%w
 
-       ! deallocate stuff in tfekete object
-       call tfekete%clean()
+       ! ! deallocate stuff in tfekete object
+       ! call tfekete%clean()
 
     case default
        print *, 'unknown elname in obtaining quadrature rules! stop'

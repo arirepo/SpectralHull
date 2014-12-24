@@ -8,7 +8,7 @@ module approx_fekete
 
      ! private components
      integer, dimension(:), allocatable :: n
-     integer :: nw, d, d_big
+     integer :: nw, d, d_big, d_orig
      real*8, dimension(:), allocatable :: coords
      real*8, dimension(:), allocatable :: rhs
      real*8, dimension(:, :), allocatable :: x0
@@ -21,6 +21,7 @@ module approx_fekete
      procedure(gen_xy), public, pointer, nopass  :: comp_xy, moment
      real*8, dimension(:), allocatable, public :: w
      real*8, dimension(:, :), allocatable, public :: fin_coords, xy0
+     character(len = 128) :: name
 
    contains
 
@@ -40,9 +41,83 @@ module approx_fekete
      end subroutine gen_xy
   end interface
 
-  public :: fekete
+  type fekete_table
+     private
+
+     type(fekete), dimension(:), allocatable :: feketes
+
+   contains
+
+     procedure, public :: lookup => lookup_in_fekete_table 
+
+  end type fekete_table
+
+  public :: fekete, fekete_table
 
 contains
+
+  ! find a given fekete element of any type and dimension,
+  ! i.e. based on requested "p" and "name",
+  ! in the current lookup table. If not found, then
+  ! adds the newly requested element to the end of the lookup table
+  ! and also, in the same time, returns that element  
+  subroutine lookup_in_fekete_table(this, d, name, fekete_out &
+       , magnify, s, spacing, echo)
+    implicit none
+    class(fekete_table), intent(inout), target :: this
+    integer, intent(in) :: d
+    character(len = *), intent(in) :: name
+    type(fekete), intent(out) :: fekete_out ! return value 
+    integer, intent(in), optional :: magnify, s
+    character(len = *), intent(in), optional :: spacing
+    logical, intent(in), optional :: echo
+
+    ! local vars
+    integer :: i, nf
+    class(fekete), pointer :: tfekete => null()
+    type(fekete), dimension(:), allocatable, target :: tmp
+
+    ! if the table has not been created yet, then make it
+    ! this happens in the first time call only 
+    if( .not. allocated(this%feketes) ) then
+       allocate(this%feketes(1))
+       tfekete => this%feketes(1)
+       call tfekete%init(d, name, magnify, s, spacing, echo)
+       ! return the added element
+       fekete_out = this%feketes(1)
+       return
+    end if
+
+    ! we already have the table, then look up the fekete element 
+    ! to see if it is there. if not, proceed to add it then  
+    do i = 1, size(this%feketes)
+
+       tfekete => this%feketes(i)
+
+       ! compare 
+       if ( (tfekete%d_orig .eq. d) .and. (tfekete%name .eq. name) ) then !found
+          fekete_out = this%feketes(i)
+          return
+       end if
+
+    end do
+
+    ! OK, the requested element is not in the table, then add it!
+    nf = size(this%feketes) !number of current fekete elems in the table
+    nf = nf + 1 ! add one more
+    allocate(tmp(nf))
+    tmp(1:(nf-1)) = this%feketes !copy previous elems 
+    tfekete => tmp(nf) !last one in the new one to be added as follows
+    call tfekete%init(d, name, magnify, s, spacing, echo)
+
+    ! move tmp to the main table
+    call move_alloc(tmp, this%feketes)
+
+    ! prepare the return value 
+    fekete_out = this%feketes(nf)
+
+    ! done here
+  end subroutine lookup_in_fekete_table
 
   subroutine initialize(this, d, name, magnify, s, spacing, echo)
     implicit none
@@ -62,6 +137,10 @@ contains
        print *, 'the fekete object is already been initialized! stop'
        stop
     end if
+
+    ! setting up the element name and original degree "d_orig"
+    this%name = name
+    this%d_orig = d
 
     ! setting default values
     if ( .not. present(magnify)) then

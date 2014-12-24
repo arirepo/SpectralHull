@@ -4,6 +4,7 @@ module grid_opt
   use spline
   use fem_reordering
   use quadri_elem
+  use approx_fekete, only : fekete_table
 
   ! use ifport
 
@@ -62,6 +63,8 @@ module grid_opt
      type(master_elem), dimension(:), allocatable :: maselem
 
      character(len = 2) :: galtype ! Galerkin type, = DG .or. PG
+
+     type(fekete_table) :: tfekete_table ! generic fekete points and quadratures
 
   end type grid
 

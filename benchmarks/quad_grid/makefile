@@ -15,7 +15,7 @@ COMPFLAGS = -Wall -c -fbounds-check $(COMMONFLAGS)
 LINKFLAGS = $(COMMONFLAGS)
 
 ### objects
-OBJ = splib.o globals.o condition.o dunavant.o nurbs.o spline.o fekete.o ncc_triangle.o fem_reordering.o quadri_elem.o grid_opt.o quad_gen.o grid_vis.o gen_basis.o approx_fekete.o element_opt.o bn_integral.o bcs.o lag_basis.o fem_utils.o spem_2d.o tester.o
+OBJ = splib.o globals.o condition.o dunavant.o nurbs.o spline.o fekete.o ncc_triangle.o fem_reordering.o quadri_elem.o approx_fekete.o grid_opt.o quad_gen.o grid_vis.o gen_basis.o element_opt.o bn_integral.o bcs.o lag_basis.o fem_utils.o spem_2d.o tester.o
 
 ### compile and link
 quadgrid: $(OBJ)
