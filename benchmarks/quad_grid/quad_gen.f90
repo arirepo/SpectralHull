@@ -119,6 +119,9 @@ module quad_gen
       allocate(grd%bn_curves(size(bc)))
       grd%bn_curves = bc
 
+      ! double check to see if all boundary edge tags are correct
+      call double_check_bn_edg_tags(grd)
+
       allocate(grd%el2bn(grd%ncellsg, 2))
       grd%el2bn = 0
       do ii = 1, grd%nbedgeg
@@ -178,6 +181,94 @@ module quad_gen
 
       ! done here
     end subroutine quadgen
+
+    subroutine double_check_bn_edg_tags(grd)
+      implicit none
+      type(grid), intent(inout), target :: grd
+
+      ! local vars
+      integer :: i, tag
+      real*8, dimension(2) :: x_edg, y_edg 
+      real*8, dimension(:), pointer :: x_curve => null(), y_curve => null()
+      logical :: found
+
+      do i = 1, grd%nbedgeg
+
+         x_edg = grd%x(grd%ibedge(i, :))
+         y_edg = grd%y(grd%ibedge(i, :))
+         tag = grd%ibedgeBC(i) ! initial tag
+
+         x_curve => grd%bn_curves(tag)%x
+         y_curve => grd%bn_curves(tag)%y
+
+         found = find_edg_in_curve(x_edg, y_edg, x_curve, y_curve)
+
+         if (found) cycle ! we are already good! 
+
+         print *, 'oops! fixing the tag of edg # ', i ,' with correct one ...'
+
+         do tag = 1, size(grd%bn_curves) ! search all curves
+
+            x_curve => grd%bn_curves(tag)%x
+            y_curve => grd%bn_curves(tag)%y
+
+            found = find_edg_in_curve(x_edg, y_edg, x_curve, y_curve)
+
+            if (found) then 
+               grd%ibedgeBC(i) = tag
+               print *, 'tag of edg # ', i, ' is now fixed to ', tag, ' done!'
+               exit
+            end if
+
+         end do
+
+         if (.not. found) then
+            ! here is the bad situation; the edge is NOT found in any curve!!!
+            print *, 'fatal : the boundary edge #', i, ' is not found in any ' &
+                 , ' boundary curve!!! stop'
+            stop 
+         end if
+
+      end do
+
+      ! done here
+    end subroutine double_check_bn_edg_tags
+
+    ! finds two points with coords (xed(1), yed(1)) and (xed(2), yed(2))
+    ! in the real array x(:), y(:). The points can be anywhere but should
+    ! match the tuples. If found returns .true. otherwise returns .false. 
+    function find_edg_in_curve(xed, yed, x, y)
+      implicit none
+      real*8, dimension(2), intent(in) :: xed, yed
+      real*8, dimension(:), intent(in) :: x, y
+      logical :: find_edg_in_curve
+
+      ! local vars
+      integer :: i
+      logical :: found1, found2
+
+      ! find point 1
+      found1 = .false. ! default
+      do i = 1, size(x)
+         if ( ( xed(1) .eq. x(i) ) .and. ( yed(1) .eq. y(i) ) ) then
+            found1 = .true.
+            exit
+         end if
+      end do
+
+      ! find point 2
+      found2 = .false. ! default
+      do i = 1, size(x)
+         if ( ( xed(2) .eq. x(i) ) .and. ( yed(2) .eq. y(i) ) ) then
+            found2 = .true.
+            exit
+         end if
+      end do
+
+      find_edg_in_curve = found1 .and. found2
+
+      ! done here
+    end function find_edg_in_curve
 
 !   subroutine quad_grid_gen(inputfile, elem, elemidx, etype, x, y, nq, nt)
 !     character(len=*),                      intent(in)     :: inputfile

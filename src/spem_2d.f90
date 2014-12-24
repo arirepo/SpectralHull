@@ -72,7 +72,9 @@ contains
        call comp_elem_KQf(fem%elems(i), i , grd)
        ! call fill_Q(grd, fem%elems(i), i)
     end do
-    print *, 'loplop'
+
+    ! compute grid area
+    call comp_grid_area(fem)
     ! stop
 
     ! proceeding to assemble all
@@ -103,6 +105,39 @@ contains
     ! done here
   end subroutine fem_init
 
+  subroutine comp_grid_area(fem)
+    implicit none
+    type(fem_struct), intent(in) :: fem
+
+    ! local vars
+    integer :: i
+    real*8 :: area
+
+    ! init
+    area = 0.0d0
+
+    do i = 1, fem%grd%ncellsg
+
+       select case (fem%grd%elname(i))
+
+       case ( GEN_QUADRI)
+          area = area + sum(fem%elems(i)%W * fem%elems(i)%JJ)
+       case ( GEN_TRIANGLE)
+          area = area + 0.5d0 * sum(fem%elems(i)%W * fem%elems(i)%JJ)
+       case default
+          print *, 'could not recognize element name when computing' &
+               , ' total grid area! stop'
+          stop
+
+       end select
+
+    end do
+
+    ! report
+    print *, 'total grid area is : ', area
+
+    ! done here
+  end subroutine comp_grid_area
 
   ! solves the fem region
   ! the result is stored in fem itself (see fem%u)

@@ -1480,6 +1480,10 @@ end do
     ys => tcurve%y
     t = 1.0d0
 
+! print *, 'tag = ', tag
+! print *, 'xs = ', xs
+! print *, 'ys = ', ys
+
     do i = 1, (size(xs) - 1) ! search all static points on that curve
 
        ! bullet proofing ...
@@ -1519,6 +1523,7 @@ end do
     ! print *, 'x = ', x
     ! print *, 'y = ', y
     ! print *, 't = ', t
+    ! print *, 'tol = ', tol
     ! print *, 't_star = ', t_star
 
     t = -1.0d0 ! not found
@@ -1570,13 +1575,13 @@ end do
           call find_t(grd, tag, grd%x(pt1), grd%y(pt1), tol, tt)
           if ( tt .eq. -1.0d0) then
              print *, 'error : the parameter t can not be computed' &
-                  , ' for point # ',pt1,' of edg # ', edgnum,'. stop.'
+                  , ' for point1 # ',pt1,' of edg # ', edgnum,'. stop.'
              stop
           end if
 
           ! computing snapped coordinate
-          call spline_nurbs_eval2(tt, xs, ys, tcurve%a, tcurve%b, tcurve%c, &
-                       & tcurve%Mx, tcurve%My, t, xx, yy, 'interp', tcurve%btype)
+          call spline_nurbs_eval2(tt, xs, ys, tcurve%a, tcurve%b, tcurve%c &
+                       , tcurve%Mx, tcurve%My, t, xx, yy, 'interp', tcurve%btype)
 !         call spline_eval2(t, xs, tt, xx, 'interp', tcurve%Mx)
 !         ! updating x
           grd%x(pt1) = xx
@@ -1595,13 +1600,13 @@ end do
           call find_t(grd, tag, grd%x(pt2), grd%y(pt2), tol, tt)
           if ( tt .eq. -1.0d0) then
              print *, 'error : the parameter t can not be computed' &
-                  , ' for point # ',pt2,' of edg # ', edgnum,'. stop.'
+                  , ' for point2 # ',pt2,' of edg # ', edgnum,'. stop.'
              stop
           end if
 
           ! computing snapped coordinate
-          call spline_nurbs_eval2(tt, xs, ys, tcurve%a, tcurve%b, tcurve%c, &
-                       & tcurve%Mx, tcurve%My, t, xx, yy, 'interp', tcurve%btype)
+          call spline_nurbs_eval2(tt, xs, ys, tcurve%a, tcurve%b, tcurve%c &
+                       , tcurve%Mx, tcurve%My, t, xx, yy, 'interp', tcurve%btype)
 !         call spline_eval2(t, xs, tt, xx, 'interp', tcurve%Mx)
 !         ! updating x
           grd%x(pt2) = xx

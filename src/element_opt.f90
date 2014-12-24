@@ -5,6 +5,7 @@ module element_opt
   use grid_opt
   use gen_basis
   use dunavant
+  use approx_fekete
 
   implicit none
 
@@ -63,6 +64,7 @@ contains
     integer :: i, p, rule, order_num, npe, degree
     real*8 :: x0, y0
     real*8, dimension(:,:), allocatable :: xy
+    type(fekete) :: tfekete
 
     if( elem%init_lock .eq. 1221360 ) then
        print *, 'error : the element #', ielem, ' is already initialized! stop'
@@ -88,27 +90,47 @@ contains
                  !
     ! rule = p ! infact it should be "p" for linear
 
-    ! check to see the order of exactness is available
-    ! in the tables for the given rule
-    call dunavant_degree ( rule, degree )
+    select case (grd%elname(ielem))
 
-    ! compute the number of required Gauss points
-    call dunavant_order_num( rule, order_num )
-    elem%ngauss = order_num
+    case (GEN_TRIANGLE)
+       ! check to see the order of exactness is available
+       ! in the tables for the given rule
+       call dunavant_degree ( rule, degree )
 
-    ! allocate space for that
-    allocate( xy(2,order_num))
-    allocate(elem%r(order_num), elem%s(order_num), elem%W(order_num))
+       ! compute the number of required Gauss points
+       call dunavant_order_num( rule, order_num )
+       elem%ngauss = order_num
 
-    ! compute the absicca and weights for that rule
-    call dunavant_rule( rule, order_num, xy, elem%W )
-    elem%r = xy(1,:)
-    elem%s = xy(2,:)
-    ! print *, 'elem%r = ', elem%r
-    ! print *, 'elem%s = ', elem%s
-    ! print *, 'elem%W = ', elem%W
+       ! allocate space for that
+       allocate( xy(2,order_num))
+       allocate(elem%r(order_num), elem%s(order_num), elem%W(order_num))
 
-    deallocate(xy)
+       ! compute the absicca and weights for that rule
+       call dunavant_rule( rule, order_num, xy, elem%W )
+       elem%r = xy(1,:)
+       elem%s = xy(2,:)
+       deallocate(xy)
+
+    case (GEN_QUADRI)
+       call tfekete%init(d = rule, name = 'quadri' &
+            , spacing = 'equal_space', s = 3, echo = .true.)
+       elem%ngauss = size(tfekete%w)
+
+       ! allocate space for that
+       allocate(elem%r(elem%ngauss), elem%s(elem%ngauss), elem%W(elem%ngauss))
+
+       elem%r = tfekete%fin_coords(1, :)
+       elem%s = tfekete%fin_coords(2, :)
+       elem%W = tfekete%w
+
+       ! deallocate stuff in tfekete object
+       call tfekete%clean()
+
+    case default
+       print *, 'unknown elname in obtaining quadrature rules! stop'
+       stop
+
+    end select
 
     ! initializing the basis functions and their derivatives
     call elem%tbasis%init(grd%maselem(ielem)%xi, grd%maselem(ielem)%eta &
