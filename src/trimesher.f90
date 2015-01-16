@@ -53,7 +53,7 @@ module trimesher
   end type tri_edges
 
 
-  public :: meshit, trigen, mesh_a_triangle
+  public :: meshit, trigen, mesh_a_triangle, mesh_a_quadri
 
 contains
 
@@ -584,7 +584,7 @@ contains
     holes(1)%y = 1.0d20 ! some point outside the domain
 
     !
-    call meshit('pnjY', pts, cons, holes, report_before_in &
+    call meshit('pnjYY', pts, cons, holes, report_before_in &
                       , report_after_in, grd_out)
 
     ! clean ups
@@ -592,37 +592,148 @@ contains
 
     ! done here
 
-  contains
-
-    subroutine add_to_cons(pts, pts_list, indx, cons)
-      implicit none
-      type(point), dimension(:), target, intent(in) :: pts
-      integer, dimension(:), intent(in) :: pts_list
-      integer, intent(inout) :: indx 
-      type(connector), dimension(:), intent(inout):: cons 
-
-      ! local vars
-      integer :: i , leng, pt1, pt2 
-
-      leng = size(pts_list)
-
-      do i = 1, (leng-1)
-
-         pt1 = pts_list( i )
-         pt2 = pts_list(i+1)
-
-         cons(indx)%tag = 1
-         cons(indx)%pt1 => pts(pt1)
-         cons(indx)%pt2 => pts(pt2)   
-         cons(indx)%is_bn_con = .true.
-         indx = indx + 1
-
-      end do
-
-      ! done here
-    end subroutine add_to_cons
-
   end subroutine mesh_a_triangle
+
+  subroutine add_to_cons(pts, pts_list, indx, cons)
+    implicit none
+    type(point), dimension(:), target, intent(in) :: pts
+    integer, dimension(:), intent(in) :: pts_list
+    integer, intent(inout) :: indx 
+    type(connector), dimension(:), intent(inout):: cons 
+
+    ! local vars
+    integer :: i , leng, pt1, pt2 
+
+    leng = size(pts_list)
+
+    do i = 1, (leng-1)
+
+       pt1 = pts_list( i )
+       pt2 = pts_list(i+1)
+
+       cons(indx)%tag = 1
+       cons(indx)%pt1 => pts(pt1)
+       cons(indx)%pt2 => pts(pt2)   
+       cons(indx)%is_bn_con = .true.
+       indx = indx + 1
+
+    end do
+
+    ! done here
+  end subroutine add_to_cons
+
+  ! meshes a single high-order curvelinear quadrilateral
+  ! with element number "ielem" in input grid "grd_in"
+  ! and writes the resulting grid in "grd_out" 
+  subroutine mesh_a_quadri(grd_in, ielem, grd_out)
+    implicit none
+    type(grid), intent(in) :: grd_in
+    integer, intent(in) :: ielem
+    type(grid), intent(out) :: grd_out
+
+    ! local vars
+    integer :: i, i1, i2, indx, npts, pts_per_edg, cons_per_edg, dpt
+    type(point), dimension(:), allocatable :: pts
+    type(connector), dimension(:), allocatable :: cons 
+    type(point) :: holes(1)
+    integer, dimension(:), allocatable :: pts_list, int_list
+    integer :: report_before_in, report_after_in
+
+    ! init.
+    report_before_in = 0 
+    report_after_in = 0
+
+    ! first fill the points
+    npts = grd_in%npe(ielem)
+    allocate(pts(npts))
+
+    do i = 1, npts
+       pts(i)%x = grd_in%x(grd_in%icon(ielem, i))
+       pts(i)%y = grd_in%y(grd_in%icon(ielem, i))
+       pts(i)%tag = i
+    end do
+
+    ! then dimension all edges
+    pts_per_edg = size(grd_in%el2edg(ielem)%edg1) + 2 ! two for end points
+    cons_per_edg = pts_per_edg - 1
+    dpt = size(grd_in%el2edg(ielem)%edg1)
+
+    ! proceeding to fill connectors array
+    allocate(cons(4 * cons_per_edg)) !qaudri has 4 sides!
+    indx = 1
+
+    ! -----------------------------------
+    !                EDG1
+    ! -----------------------------------
+    ! adding connectors on edg1 of the element
+    if (pts_per_edg .eq. 2) then
+       pts_list = (/ 1, 2 /)
+    else
+       i1 = 5
+       i2 = 5 + dpt - 1
+       int_list = (/ (i, i = i1, i2) /)
+       pts_list = (/ 1, int_list, 2 /)
+    end if
+    call add_to_cons(pts, pts_list, indx, cons)
+
+
+    ! -----------------------------------
+    !                EDG2
+    ! -----------------------------------
+    ! adding connectors on edg2 of the element
+    if (pts_per_edg .eq. 2) then
+       pts_list = (/ 2, 3 /)
+    else
+       i1 = 5 + dpt
+       i2 = 5 + 2* dpt - 1
+       int_list = (/ (i, i = i1, i2) /)
+       pts_list = (/ 2, int_list, 3 /)
+    end if
+    call add_to_cons(pts, pts_list, indx, cons)
+
+    ! -----------------------------------
+    !                EDG3
+    ! -----------------------------------
+    ! adding connectors on edg3 of the element
+    if (pts_per_edg .eq. 2) then
+       pts_list = (/ 3, 4 /)
+    else
+       i1 = 5 + 2* dpt
+       i2 = 5 + 3* dpt - 1
+       int_list = (/ (i, i = i1, i2) /)
+       pts_list = (/ 3, int_list, 4 /)
+    end if
+    call add_to_cons(pts, pts_list, indx, cons)
+
+    ! -----------------------------------
+    !                EDG4
+    ! -----------------------------------
+    ! adding connectors on edg4 of the element
+    if (pts_per_edg .eq. 2) then
+       pts_list = (/ 4, 1 /)
+    else
+       i1 = 5 + 3* dpt
+       i2 = 5 + 4* dpt - 1
+       int_list = (/ (i, i = i1, i2) /)
+       pts_list = (/ 4, int_list, 1 /)
+    end if
+    call add_to_cons(pts, pts_list, indx, cons)
+
+    ! setting up the holes which there is no hole
+    ! here in this case
+    holes(1)%tag = -1
+    holes(1)%x = 1.0d20 ! some point outside the domain
+    holes(1)%y = 1.0d20 ! some point outside the domain
+
+    !
+    call meshit('pnjYY', pts, cons, holes, report_before_in &
+                      , report_after_in, grd_out)
+
+    ! clean ups
+    deallocate(pts, cons)
+
+    ! done here
+  end subroutine mesh_a_quadri
 
 end module trimesher
 

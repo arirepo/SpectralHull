@@ -3,6 +3,7 @@ program tester
   use grid_vis
   use grid_opt
   use spem_2d
+  use plot_curved_elems
 
   implicit none
 
@@ -54,6 +55,8 @@ program tester
   allocate(u(1, fem%grd%nnodesg))
   u = 1.0d0
   call write_u_tecplot('./grd.dat', fem%grd, u)
+
+  call vis_curved_grid(fem, 'mixed.dat')
 
   ! done here
   print *, 'OK'

@@ -182,11 +182,22 @@ contains
     ! init
     neqs = fem%neqs
 
-    do ii = 1, fem%grd%ntri
+    do ii = 1, fem%grd%ncellsg
 
        ! produce sub-triangle for a single curved SEM element
        ! just to use in the visuallization procedure
-       call mesh_a_triangle(grd_in = fem%grd, ielem = ii, grd_out = grd2)
+       select case (fem%grd%elname(ii))
+
+       case (GEN_TRIANGLE)
+          call mesh_a_triangle(grd_in = fem%grd, ielem = ii, grd_out = grd2)
+       case (GEN_QUADRI)
+          call mesh_a_quadri(grd_in = fem%grd, ielem = ii, grd_out = grd2)
+       case default
+          print *, 'unknown element name in vis_curved_grid(...)! stop'
+          stop
+
+       end select
+
        allocate(utmp(neqs, grd2%nnodesg))
        allocate(d_utmp_dx(neqs, grd2%ntri), d_utmp_dy(neqs, grd2%ntri))
        allocate(u_cell(neqs, grd2%ntri))
