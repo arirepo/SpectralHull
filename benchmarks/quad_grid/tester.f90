@@ -18,7 +18,7 @@ program tester
   type(fem_struct) :: fem
 
   ! dx = 3.0_rk
-  dx = 2.0_rk
+  dx = 1.0_rk
   idx = dx
   dy = dx
   idy = dy
@@ -46,15 +46,15 @@ program tester
 
   ! subroutine add_more_points(grd, pin, eltypein, tolerance, galtype, n1, n2)
   allocate(pin(fem%grd%ncellsg), eltypein(fem%grd%ncellsg))
-  pin = 5
+  pin = 4
   eltypein = 0
   call add_more_points(fem%grd, pin, eltypein, 1.0d-12, 'PG')
 
   call fem_init(fem, neqs = 1, lin_solve_method = 'LAPACK_LU', tag = 1) 
 
-  allocate(u(1, fem%grd%nnodesg))
-  u = 1.0d0
-  call write_u_tecplot('./grd.dat', fem%grd, u)
+  call fem_solve(fem, echo = .true.)
+
+  call write_u_tecplot('./grd.dat', fem%grd, fem%u)
 
   call vis_curved_grid(fem, 'mixed.dat')
 

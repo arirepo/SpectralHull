@@ -54,7 +54,7 @@ contains
     ! fout = (/ 0.0d0, 0.0d0 /)
     ! fout = (/ 1.0d0/8.0d0 * (x**2.0d0 + y**2.0d0) /)
     ! fout = (/ cos(2.0d0 * x) * sinh(2.0d0 * y) /)
-    fout = (/ 150.0d0 /)
+    fout = (/ -1.0d0 * x/)
   end subroutine f1
 
   ! subroutine defined for boundary tag 2
@@ -210,11 +210,12 @@ contains
        ! case(1:7)
        case(1:2)
           id = 1
-          cycle
+          ! cycle
        ! case(8:9)
        case(3:4)
 
           id = 2
+          cycle
        case default 
           print *, 'wrong id! stop'
           stop

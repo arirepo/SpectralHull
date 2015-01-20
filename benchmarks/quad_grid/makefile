@@ -10,8 +10,8 @@
 
 ### compiler
 ##GF = /usr/bin/gfortran
-# GF = ~/gcc-trunk/bin/gfortran
-GF = /opt/gcc/bin/gfortran
+GF = ~/gcc-trunk/bin/gfortran
+# GF = /opt/gcc/bin/gfortran
 VPATH = ./:../../src/:
 COMMONFLAGS = -lblas -llapack
 COMPFLAGS = -Wall -c -fbounds-check $(COMMONFLAGS)

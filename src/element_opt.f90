@@ -280,7 +280,7 @@ contains
     ! local vars
     integer :: i, j, k, l, m, npe 
     real*8, dimension(2) :: der1, der2
-
+    real*8 :: coeff
 
     ! check this element must be initialized before
     if (elem%init_lock .ne. 1221360) then
@@ -295,6 +295,14 @@ contains
     elem%K = 0.0d0
     elem%M = 0.0d0
 
+    ! select the coefficitn of the Jacobian of the transformation
+    select case (grd%elname(ielem))
+    case ( GEN_QUADRI)
+       coeff = 1.0d0
+    case ( GEN_TRIANGLE)
+       coeff = 0.5d0
+    end select
+
     ! fill out stiffness matrix
     do l = 1, elem%neqs
        do m = 1, elem%neqs
@@ -307,13 +315,12 @@ contains
                    ! transform computational grads to physical grads
                    der1 = matmul(elem%Jstar(:,:,k), der1)
                    der2 = matmul(elem%Jstar(:,:,k), der2)
-                   ! accumulate to the stiffness matrix of this element 
+                   ! accumulate to the stiffness matrix of this element
                    elem%K(l,m,i,j) = elem%K(l,m,i,j) &
-                        + sum(der1 * der2) * elem%JJ(k) * elem%W(k)
+                        + sum(der1 * der2) * coeff * elem%JJ(k) * elem%W(k)
                    ! accumulate to the mass matrix of this element 
                    elem%M(l,m,i,j) = elem%M(l,m,i,j) &
-                        + elem%psi(i,k) * elem%psi(j,k) * elem%JJ(k) * elem%W(k)
-
+                        + elem%psi(i,k) * elem%psi(j,k) * coeff * elem%JJ(k) * elem%W(k)
 
                 end do
              end do

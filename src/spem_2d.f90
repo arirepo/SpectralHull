@@ -88,7 +88,7 @@ contains
     ! imposing boundary conditions for fem grid
     ! NOTE : additional BCs coming from synchronization
     ! between fem and ps blocks are imposed dynamically
-    ! call impose_bcs(grd, fem%KK, fem%rhs)
+    call impose_bcs(grd, fem%KK, fem%rhs)
 
     ! call comp_bn_length(grd, fem%elems)
 
@@ -169,7 +169,7 @@ contains
 
     if (echo) print *, 'fem_solve completed for fem region', fem%tag, ' successfully!'
 
-    call print_cp(fem%u, fem%grd, fem%elems)
+    ! call print_cp(fem%u, fem%grd, fem%elems)
     ! done here
   end subroutine fem_solve
 
