@@ -212,7 +212,7 @@ contains
           id = 1
           ! cycle
        ! case(8:9)
-       case(3:4)
+       case(3:)
 
           id = 2
           cycle
@@ -265,6 +265,9 @@ contains
                    inter_pts => grd%el2edg(ielem)%edg2
                 case (3)
                    inter_pts => grd%el2edg(ielem)%edg3
+                case (4) ! only quad
+                   inter_pts => grd%el2edg(ielem)%edg4
+
                 case default
                    print *, 'something is wring in applying BCs' &
                         , ' on points inside a boundary edge! stop'
@@ -321,6 +324,12 @@ contains
 
     ! handling duplicate nodes (if any)
     if ( allocated(grd%dup_nodes) .and. ( size(grd%dup_nodes) >= 1) ) then
+
+       print *, 'duplicated nodes are detected!!! Althought' &
+            , ' they can be handled in general, for quality reasons' &
+            , ' they are not currently supported in this version. stop'
+       stop
+
        dup => grd%dup_nodes
        do k = 1, grd%tot_repeated_bn_nodes
           pt1 = dup(2 * k - 1)
@@ -459,7 +468,7 @@ print *, 'size(tmp) = ', size(tmp)
        id = grd%ibedgeBC(i)
        select case (id)
 
-       case(1:2)
+       case(3:)
        ! case(1:7)
           ! cycle
        case default 
@@ -484,8 +493,11 @@ cycle
              inter_pts => grd%el2edg(ielem)%edg2
           case (3)
              inter_pts => grd%el2edg(ielem)%edg3
+          case (4)
+             inter_pts => grd%el2edg(ielem)%edg4
+
           case default
-             print *, 'something is wring in applying BCs' &
+             print *, 'something is wrong in computing Cp' &
                   , ' on points inside a boundary edge! stop'
              stop
           end select

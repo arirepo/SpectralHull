@@ -618,8 +618,8 @@ contains
              stop
           else if (  (r > (1.0d0 + tolrs)) .or. (s > (1.0d0 + tolrs)) &
                .or.  (r < (0.0d0 - tolrs)) .or. (s < (0.0d0 - tolrs)) ) then
-             print *, '(r,s) = ', r, s ,' out of range! stop.'
-             stop 
+             ! print *, '(r,s) = ', r, s ,' out of range! stop.'
+             ! stop 
           end if
           ! print *, 'j = ', j , 'error = ', sqrt(sum(delta*delta))
           return

@@ -18,7 +18,7 @@ program tester
   type(fem_struct) :: fem
 
   ! dx = 3.0_rk
-  dx = 1.0_rk
+  dx = 3.0_rk
   idx = dx
   dy = dx
   idy = dy
@@ -32,7 +32,7 @@ program tester
 
   ! testing type(grid) convertor
 ! call quadgen('../../geom/coarse_cylinder_tri.dat', grd, 1)
-  call quadgen('../../geom/coarse_cylinder_tri.dat', fem%grd, 2, dx, dy, idx, idy, 1)
+  call quadgen('../../geom/unit_quadri_for_Cp.dat', fem%grd, 2, dx, dy, idx, idy)
   ! call quadgen('../../geom/circles.dat', fem%grd, 1, dx, dy, idx, idy, 1)
   ! call quadgen('../../geom/simp_rect.dat', fem%grd, 1, dx, dy, idx, idy, 1)
 
@@ -46,8 +46,8 @@ program tester
 
   ! subroutine add_more_points(grd, pin, eltypein, tolerance, galtype, n1, n2)
   allocate(pin(fem%grd%ncellsg), eltypein(fem%grd%ncellsg))
-  pin = 4
-  eltypein = 0
+  pin = 8
+  eltypein = 1
   call add_more_points(fem%grd, pin, eltypein, 1.0d-12, 'PG')
 
   call fem_init(fem, neqs = 1, lin_solve_method = 'LAPACK_LU', tag = 1) 

@@ -169,7 +169,8 @@ contains
 
     if (echo) print *, 'fem_solve completed for fem region', fem%tag, ' successfully!'
 
-    ! call print_cp(fem%u, fem%grd, fem%elems)
+    call print_cp(fem%u, fem%grd, fem%elems)
+
     ! done here
   end subroutine fem_solve
 
