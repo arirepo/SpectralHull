@@ -564,29 +564,6 @@ module quad_gen
       end do
     end subroutine create_tmp_points
 
-    subroutine get_closest_index(x, y, bconn, idx, xv, yv, b1, b2)
-      real(rk), dimension(:), intent(in)     :: x, y
-      integer,  dimension(:), intent(in)     :: bconn
-      integer,                intent(in out) :: idx
-      real(rk),               intent(in)     :: xv, yv
-      integer,                intent(in)     :: b1, b2
-      integer :: i, nn, n
-      real(rk) :: diff, v
-
-      idx = b1 + 1
-      diff = (x(bconn(idx)) - xv)**2 + (y(bconn(idx)) - yv)**2
-      nn = size(x)
-
-      do i = b1 + 1, b2 - 1
-        n = bconn(i)
-        v = (x(n) - xv)**2 + (y(n) - yv)**2
-        if(v < diff)then
-          diff = v
-          idx = i
-        end if
-      end do
-    end subroutine get_closest_index
-
     subroutine get_extrema(xn, xx, yn, yx, bc, nb)
       real(rk), intent(in out) :: xn, xx, yn, yx
       type(curve), dimension(:), intent(in) :: bc
@@ -710,11 +687,15 @@ module quad_gen
       integer,                                 intent(in out) :: nx, ny
       real(rk),                                intent(in)     :: xmin, ymin
       real(rk),                                intent(in out) :: dx, dy
-      integer, dimension(:), allocatable :: divide_x, divide_y
+      integer, dimension(:), allocatable :: divide_x, divide_y, mark
       integer :: i, j, k, n1, n2, outer_loop, nnx, nny
       real(rk) :: xv1, xv2, yv1, yv2
       real(rk) :: xn, yn, xx, yx, g_xx, g_yx, g_xn, g_yn, xv, yv, odx, ody
       real(rk), dimension(:), allocatable :: ndx, ndy
+      integer :: xdir, ydir, b, c1, c2, r1, r2, r, c, c11, c12
+      real(rk) :: lxx, lyx, lxn, lyn, txx, tyx, txn, tyn, npts, cx, cy
+      real(rk), dimension(:), allocatable :: xline, yline
+
 
       odx = ddx(2) - ddx(1)
       ody = ddy(nx + 1) - ddy(1)
@@ -787,8 +768,6 @@ module quad_gen
         end do
       end if
 
-      call check_enclosed_loops(loops, bpl, nl, bc, xmin, ymin, odx, ody, dx, dy, divide_x, divide_y)
-
       nnx = nx + SUM(divide_x)
       nny = ny + SUM(divide_y)
 
@@ -855,71 +834,714 @@ module quad_gen
       ny = nny
       deallocate(ndx, ndy)
       deallocate(divide_x, divide_y)
+      call connect_interior_loops(ddx, ddy, nx, ny, nl, loops, bpl, bc)
+
+      nnx = 0
+      nny = 0
+      if(nl > 1)then
+        allocate(xline(6 * nl), yline(6 * nl))
+        xline(:) = g_xx + 1
+        yline(:) = g_xx + 1
+
+        call compute_loop_extrema(xline, yline, nl, outer_loop, loops, bpl, bc, nnx, nny)
+
+        allocate(mark(nx * ny))
+        mark(:) = -1
+
+        do i = 1, nl
+          c11 = 0
+          c12 = 0
+          if(xline(6 * (i - 1) + 1) < g_xx)then
+            r = 1
+            c = 1
+
+            do j = 1, ny - 1
+              if(ddy((j - 1) * nx + 1) < xline(6 * (i - 1) + 4))then
+                r = j
+              end if
+            end do
+            do j = 1, nx - 1
+              if( ddx(j) < xline(6 * (i - 1) + 3))then
+                c = j
+              end if
+            end do
+
+            if(abs(ddx(c    ) - xline(6 * (i - 1) + 3)) > &
+             & abs(ddx(c + 1) - xline(6 * (i - 1) + 3)))then
+              c = c + 1
+            end if
+
+            if(abs(ddy(nx * (r - 1) + 1) - xline(6 * (i - 1) + 4)) > &
+             & abs(ddy(nx * (r    ) + 1) - xline(6 * (i - 1) + 4)))then
+              r = r + 1
+            end if
+
+            c1 = c - 1
+            c2 = nx - 1
+            r1 = r - 1
+            r2 = ny - 1
+
+            do j = 1, nx - 1
+              if( ddx(nx * (r - 1) + j) < xline(6 * (i - 1) + 1) )then
+                if(j <= c)then
+                  c1 = j
+                end if
+              end if
+              if( ddx(nx * (r - 1) + j + 1) > xline(6 * (i - 1) + 5) )then
+                if(j < c2 .and. j >= c)then
+                  c2 = j
+                end if
+              end if
+            end do
+
+            do j = 1, ny - 1
+              if(ddy(nx * (j - 1) + c) < xline(6 * (i - 1) + 2) )then
+                if(j < r)then
+                  r1 = j
+                end if
+              end if
+              if(ddy(nx * (j - 1) + c) > xline(6 * (i - 1) + 6) )then
+                if(j < r2 .and. j > r)then
+                  r2 = j
+                end if
+              end if
+            end do
+
+            nny = ny
+            nnx = nx + 2
+            n1 = 0
+            n2 = 0
+
+            if( c1 .ge. c2 )then
+              c2 = c1 + 1
+              c = c1
+            end if
+            if(abs(c1 - c) < 1)then
+              n1 = 1
+            end if
+            if(abs(c2 - c) < 1)then
+              n2 = 1
+            end if
+            allocate(ndx(nnx * nny), ndy(nnx * nny))
+
+            do j = 1, ny
+              ndx(nnx * (j - 1) + 1 : nnx * (j - 1) + c1) = ddx(nx * (j - 1) + 1 : nx * (j - 1) + c1)
+              ndy(nnx * (j - 1) + 1 : nnx * (j - 1) + c1) = ddy(nx * (j - 1) + 1 : nx * (j - 1) + c1)
+
+              ndx(nnx * (j - 1) + c2 + 2 : nnx * (j - 1) + nnx) = ddx(nx * (j - 1) + c2 : nx * (j - 1) + nx)
+              ndy(nnx * (j - 1) + c2 + 2 : nnx * (j - 1) + nnx) = ddy(nx * (j - 1) + c2 : nx * (j - 1) + nx)
+
+              ndx(nnx * (j - 1) + c1 + 2 : nnx * (j - 1) + c2) = ddx(nx * (j - 1) + c1 + 1 : nx * (j - 1) + c2 - 1)
+              ndy(nnx * (j - 1) + c1 + 2 : nnx * (j - 1) + c2) = ddy(nx * (j - 1) + c1 + 1 : nx * (j - 1) + c2 - 1)
+
+              ndx(nnx * (j - 1) + c1 + 1) = xline(6 * (i - 1) + 1)
+              ndy(nnx * (j - 1) + c1 + 1) = ddy(nx * (j - 1) + c1)
+
+              ndx(nnx * (j - 1) + c2 + 1) = xline(6 * (i - 1) + 5)
+              ndy(nnx * (j - 1) + c2 + 1) = ddy(nx * (j - 1) + c2)
+            end do
+
+            c1 = c1 + 1
+            c = c + 1 + n1
+            c2 = c2 + 1
+
+            ndx(nnx * (r - 1) + c1) = xline(6 * (i - 1) + 1)
+            ndy(nnx * (r - 1) + c1) = xline(6 * (i - 1) + 2)
+
+            ndx(nnx * (r - 1) + c2) = xline(6 * (i - 1) + 5)
+            ndy(nnx * (r - 1) + c2) = xline(6 * (i - 1) + 6)
+
+            ndx(nnx * (r - 1) + c) = xline(6 * (i - 1) + 3)
+            ndy(nnx * (r - 1) + c) = xline(6 * (i - 1) + 4)
+
+            nx = nnx
+            ny = nny
+
+            deallocate(ddx, ddy, mark)
+            allocate(ddx(nx * ny), ddy(nx * ny), mark(nx * ny))
+            ddx(:) = ndx(:)
+            ddy(:) = ndy(:)
+            mark(:) = -1
+            deallocate(ndx, ndy)
+
+            c11 = c1
+            c12 = c2
+
+            call smooth_vals(r1,r,r2,c1,c,c2,ddx,ddy,nx,ny, mark)
+          end if
+
+          if(yline(6 * (i - 1) + 1) < g_xx)then
+            r = 1
+            c = 1
+
+            do j = 1, ny - 1
+              if(ddy((j - 1) * nx + 1) < yline(6 * (i - 1) + 4))then
+                r = j
+              end if
+            end do
+            do j = 1, nx - 1
+              if( ddx(j) < yline(6 * (i - 1) + 3))then
+                c = j
+              end if
+            end do
+
+            if(abs(ddx(c    ) - yline(6 * (i - 1) + 3)) > &
+             & abs(ddx(c + 1) - yline(6 * (i - 1) + 3)))then
+              c = c + 1
+            end if
+
+            if(abs(ddy(nx * (r - 1) + 1) - yline(6 * (i - 1) + 4)) > &
+             & abs(ddy(nx * (r    ) + 1) - yline(6 * (i - 1) + 4)))then
+              r = r + 1
+            end if
+
+            c1 = c
+            c2 = nx - 1
+            r1 = r
+            r2 = ny - 1
+
+            do j = 1, nx - 1
+              if( ddx(nx * (r - 1) + j) < yline(6 * (i - 1) + 1) )then
+                if(j < c)then
+                  c1 = j
+                end if
+              end if
+              if( ddx(nx * (r - 1) + j) > yline(6 * (i - 1) + 5) )then
+                if(j < c2 .and. j > c)then
+                  c2 = j
+                end if
+              end if
+            end do
+
+            do j = 1, ny - 1
+              if(ddy(nx * (j - 1) + c) < yline(6 * (i - 1) + 2) )then
+                if(j < r)then
+                  r1 = j
+                end if
+              end if
+              if(ddy(nx * (j - 1) + c) > yline(6 * (i - 1) + 6) )then
+                if(j < r2 .and. j > r)then
+                  r2 = j
+                end if
+              end if
+            end do
+
+            nny = ny + 2
+            nnx = nx
+            n1 = 0
+            n2 = 0
+
+            if(r1 .ge. r2)then
+              r2 = r1
+              r = r1
+            end if
+            if(abs(r1 - r) < 1)then
+              n1 = 1
+            end if
+            if(abs(r2 - r) < 1)then
+              n2 = 1
+            end if
+            allocate(ndx(nnx * nny), ndy(nnx * nny))
+
+            do j = 1, r1
+              ndx(nnx * (j - 1) + 1 : nnx * (j - 1) + nx) = ddx(nx * (j - 1) + 1 : nx * (j - 1) + nx)
+              ndy(nnx * (j - 1) + 1 : nnx * (j - 1) + nx) = ddy(nx * (j - 1) + 1 : nx * (j - 1) + nx)
+            end do
+            do j = r2, ny
+              ndx(nnx * (j + 1) + 1 : nnx * (j + 1) + nx) = ddx(nx * (j - 1) + 1 : nx * (j - 1) + nx)
+              ndy(nnx * (j + 1) + 1 : nnx * (j + 1) + nx) = ddy(nx * (j - 1) + 1 : nx * (j - 1) + nx)
+            end do
+            do j = r1 + 1, r2 - 1
+              ndx(nnx * j + 1 : nnx * j + nx) = ddx(nx * (j - 1) + 1 : nx * (j - 1) + nx)
+              ndy(nnx * j + 1 : nnx * j + nx) = ddy(nx * (j - 1) + 1 : nx * (j - 1) + nx)
+            end do
+            ndx(nnx * r1 + 1 : nnx * r1 + nx) = ddx(nx * (r1 - 1) + 1 : nx * (r1 - 1) + nx)
+            ndy(nnx * r1 + 1 : nnx * r1 + nx) = yline(6 * (i - 1) + 2)
+            ndx(nnx * r2 + 1 : nnx * r2 + nx) = ddx(nx * (r2 - 1) + 1 : nx * (r2 - 1) + nx)
+            ndy(nnx * r2 + 1 : nnx * r2 + nx) = yline(6 * (i - 1) + 4)
+
+            r1 = r1 + 1
+            r = r + 1 + n1
+            r2 = r2 + 1
+
+            ndx(nnx * (r1 - 1) + c) = yline(6 * (i - 1) + 1)
+            ndy(nnx * (r1 - 1) + c) = yline(6 * (i - 1) + 2)
+
+            ndx(nnx * r2 + c) = yline(6 * (i - 1) + 5)
+            ndy(nnx * r2 + c) = yline(6 * (i - 1) + 6)
+
+            ndx(nnx * (r - 1) + c) = yline(6 * (i - 1) + 3)
+            ndy(nnx * (r - 1) + c) = yline(6 * (i - 1) + 4)
+
+            nx = nnx
+            ny = nny
+            deallocate(ddx, ddy, mark)
+            allocate(ddx(nx * ny), ddy(nx * ny), mark(nx * ny))
+            ddx(:) = ndx(:)
+            ddy(:) = ndy(:)
+            mark(:) = -1
+            deallocate(ndx, ndy)
+
+            call smooth_vals(r1,r,r2,c1,c,c2,ddx,ddy,nx,ny, mark)
+            if(c11 > 0)then
+              call smooth_square(r1,r,r2,c11,c,c12,ddx,ddy,nx,ny,mark)
+            end if
+          end if
+
+        end do
+        deallocate(xline, yline, mark)
+      end if
+
     end subroutine get_spacing
 
-    subroutine check_enclosed_loops(loops, bpl, nl, bc, xmin, ymin, odx, ody, dx, dy, nx, ny)
-      integer,       dimension(:), intent(in)     :: loops, bpl
-      integer,                     intent(in)     :: nl
-      type(curve), dimension(:), intent(in)     :: bc
-      real(rk),                    intent(in)     :: xmin, ymin
-      real(rk),                    intent(in out) :: odx, ody, dx, dy
-      integer,       dimension(:), intent(in out) :: nx, ny
-      integer  :: l, lc, b, row, col, nrow, ncol, i, dnx, dny
-      real(rk) :: xn, xx, yn, yx, x, y, exn, exx, eyn, eyx
-      nrow = size(ny)
-      ncol = size(nx)
+    subroutine connect_interior_loops(x, y, onx, ony, nl, loops, bpl, bc)
+      real(rk),   dimension(:), allocatable, intent(in out) :: x, y
+      integer,                               intent(in out) :: onx, ony
+      integer,                               intent(in)     :: nl
+      integer,    dimension(:),              intent(in)     :: loops, bpl
+      type(curve),dimension(:),              intent(in)     :: bc
+      real(rk), dimension(:), allocatable :: nx, ny
+      integer :: row, col, rc, cc, l, i, j, b, n1, n2, n3, n4, check, nnx, nny
+      real(rk) :: cx, cy, npts, q_cx, q_cy, d1, d2, d3, d4, d5, d6
+      real(rk) :: lxn, lxx, lyn, lyx, qxn, qxx, qyn, qyx
 
       do l = 1, nl
-        xn = MINVAL(bc(loops(bpl(l)))%x)
-        yn = MINVAL(bc(loops(bpl(l)))%y)
-        xx = MAXVAL(bc(loops(bpl(l)))%x)
-        yx = MAXVAL(bc(loops(bpl(l)))%y)
-        dnx = MAX(int((odx + 0.5_rk) / (xx - xn)), int((odx + 0.5_rk) / dx), 1)
-        dny = MAX(int((ody + 0.5_rk) / (yx - yn)), int((ody + 0.5_rk) / dy), 1)
+        cx = 0.0_rk; cy = 0.0_rk; npts = 0.0_rk
+        lxn = bc(loops(bpl(l)))%x(1)
+        lyn = bc(loops(bpl(l)))%y(1)
+        lxx = lxn
+        lyx = lyn
+        do i = bpl(l), bpl(l + 1) - 1
+          b = loops(i)
+          cx = cx + SUM(bc(b)%x)
+          cy = cy + SUM(bc(b)%y)
+          npts = npts + SIZE(bc(b)%x) * 1.0_rk
 
-        do lc = bpl(l), bpl(l + 1) - 1
-          b = loops(lc)
-          xn = MIN(xn, MINVAL(bc(b)%x))
-          yn = MIN(yn, MINVAL(bc(b)%y))
-          xx = MAX(xx, MAXVAL(bc(b)%x))
-          yx = MAX(yx, MAXVAL(bc(b)%y))
-        end do ! lc : boundaries per loop l
+          lxn = MIN(lxn, MINVAL(bc(b)%x))
+          lxx = MAX(lxx, MAXVAL(bc(b)%x))
+          lyn = MIN(lyn, MINVAL(bc(b)%y))
+          lyx = MAX(lyx, MAXVAL(bc(b)%y))
+        end do
+        cx = cx / npts
+        cy = cy / npts
 
-        do i = 1, ncol
-          x = xmin + (i - 1) * odx
-          if(x < xn)then
-            col = i
-            exn = x
-            exx = xmin + i * odx
-          end if
+        check = 1
+
+        do row = 1, ony - 1
+          do col = 1, onx - 1
+            if(check > 0)then
+              n1 = onx * (row - 1) + col
+              n2 = onx * (row - 1) + col + 1
+              n3 = onx * (row    ) + col + 1
+              n4 = onx * (row    ) + col
+
+              qxn = MIN(x(n1),x(n2),x(n3),x(n4))
+              qxx = MAX(x(n1),x(n2),x(n3),x(n4))
+              qyn = MIN(y(n1),y(n2),y(n3),y(n4))
+              qyx = MAX(y(n1),y(n2),y(n3),y(n4))
+
+              if(lxn > qxn .and. lxx < qxx .and. lyn > qyn .and. lyx < qyx)then
+                check = -1
+
+                d1 = abs(cx - 0.5_rk * (x(n1) + x(n4)))
+                d2 = abs(cx - 0.5_rk * (x(n2) + x(n3)))
+                d3 = abs(cx - 0.25_rk * (x(n1) + x(n2) + x(n3) + x(n4)))
+
+                d4 = abs(cy - 0.5_rk * (y(n1) + y(n2)))
+                d5 = abs(cy - 0.5_rk * (y(n3) + y(n4)))
+                d6 = abs(cy - 0.25_rk * (y(n1) + y(n2) + y(n3) + y(n4)))
+
+                if(d1 > d3 .and. d2 > d3)then
+                  if(d6 > d4 .or. d6 > d5)then
+                    nnx = onx + 1
+                    nny = ony
+
+                    allocate(nx(nnx * nny), ny(nnx * nny))
+
+                    do i = 1, ony
+                      do j = 1, col
+                        nx(nnx * (i - 1) + j) = x(onx * (i - 1) + j)
+                        ny(nnx * (i - 1) + j) = y(onx * (i - 1) + j)
+                      end do
+                      do j = col + 1, onx
+                        nx(nnx * (i - 1) + j + 1) = x(onx * (i - 1) + j)
+                        ny(nnx * (i - 1) + j + 1) = y(onx * (i - 1) + j)
+                      end do
+                      nx(nnx * (i - 1) + col + 1) = cx
+                      ny(nnx * (i - 1) + col + 1) = ny(nnx * (i - 1) + col)
+                    end do
+                    ny(onx * (row - 1) + col + 1) = cy
+
+                  else
+                    nnx = onx + 1
+                    nny = ony + 1
+
+                    allocate(nx(nnx * nny), ny(nnx * nny))
+
+                    do i = 1, row
+                      do j = 1, col
+                        nx(nnx * (i - 1) + j) = x(onx * (i - 1) + j)
+                        ny(nnx * (i - 1) + j) = y(onx * (i - 1) + j)
+                      end do
+                      do j = col + 1, onx
+                        nx(nnx * (i - 1) + j + 1) = x(onx * (i - 1) + j)
+                        ny(nnx * (i - 1) + j + 1) = y(onx * (i - 1) + j)
+                      end do
+                      nx(nnx * (i - 1) + col + 1) = cx
+                      ny(nnx * (i - 1) + col + 1) = ny(nnx * (i - 1) + col)
+                    end do
+                    do i = row + 1, ony
+                      do j = 1, col
+                        nx(nnx * i + j) = x(onx * (i - 1) + j)
+                        ny(nnx * i + j) = y(onx * (i - 1) + j)
+                      end do
+                      do j = col + 1, onx
+                        nx(nnx * i + j + 1) = x(onx * (i - 1) + j)
+                        ny(nnx * i + j + 1) = y(onx * (i - 1) + j)
+                      end do
+                      nx(nnx * i + col + 1) = cx
+                      ny(nnx * i + col + 1) = ny(nnx * i + col)
+                    end do
+
+                    do i = 1, nnx
+                      nx(nnx * row + i) = nx(nnx * (row - 1) + i)
+                      ny(nnx * row + i) = cy
+                    end do
+
+                    nx(nnx * row + col + 1) = cx
+                    ny(nnx * row + col + 1) = cy
+
+                  end if
+                else
+                  if(d6 < d4 .and. d6 < d5)then
+                    nnx = onx
+                    nny = ony + 1
+
+                    allocate(nx(nnx * nny), ny(nnx * nny))
+
+                    do i = 1, row
+                      do j = 1, onx
+                        nx(nnx * (i - 1) + j) = x(onx * (i - 1) + j)
+                        ny(nnx * (i - 1) + j) = y(onx * (i - 1) + j)
+                      end do
+                    end do
+
+                    do i = row + 1, ony
+                      do j = 1, onx
+                        nx(nnx * i + j) = x(onx * (i - 1) + j)
+                        ny(nnx * i + j) = y(onx * (i - 1) + j)
+                      end do
+                    end do
+                    do i = 1, onx
+                     nx(nnx * row + i) = x(onx * (row - 1) + i)
+                     ny(nnx * row + i) = cy
+                    end do
+                    nx(nnx * row + col) = cx
+                    ny(nnx * row + col) = cy
+                  else if(d6 > d4)then
+                    nnx = onx
+                    nny = ony
+                    allocate(nx(nnx * nny), ny(nnx * nny))
+                    nx(:) = x(:)
+                    ny(:) = y(:)
+
+                    if(d1 < d3)then
+                      nx(n1) = cx
+                      ny(n1) = cy
+                    else
+                      nx(n2) = cx
+                      ny(n2) = cy
+                    end if
+                  else
+                    nnx = onx
+                    nny = ony
+                    allocate(nx(nnx * nny), ny(nnx * nny))
+                    nx(:) = x(:)
+                    ny(:) = y(:)
+                    if(d1 < d3)then
+                      nx(n4) = cx
+                      ny(n4) = cy
+                    else
+                      nx(n3) = cx
+                      ny(n3) = cy
+                    end if
+                  end if
+                end if
+
+              end if
+            end if
+          end do
         end do
-        do i = 1, nrow
-          y = ymin + (i - 1) * ody
-          if(y < yn)then
-            row = i
-            eyn = y
-            eyx = ymin + i * ody
-          end if
-        end do
-        if(exn < xn .and. exx > xx .and. eyn < yn .and. eyx > yx)then
-          nx(col) = MAX(nx(col), 2)
-          ny(row) = MAX(ny(row), 2)
+
+        if(check < 0)then
+          deallocate(x, y)
+          onx = nnx
+          ony = nny
+          allocate(x(nnx * nny), y(nnx * nny))
+          x(:) = nx(:)
+          y(:) = ny(:)
+          deallocate(nx, ny)
         end if
-      end do ! l : boundary loop count
-    end subroutine check_enclosed_loops
+
+      end do
+    end subroutine connect_interior_loops
+
+
+    subroutine compute_loop_extrema(xline, yline, nl, outer_loop, loops, bpl, bc, nnx, nny)
+      real(rk),    dimension(:), intent(in out) :: xline, yline
+      integer,                   intent(in)     :: nl, outer_loop
+      integer,     dimension(:), intent(in)     :: loops, bpl
+      type(curve), dimension(:), intent(in)     :: bc
+      integer,                   intent(in out) :: nnx, nny
+      integer :: i, j, k, b, xdir, ydir
+      real(rk) :: cx, cy, lxn, lxx, lyn, lyx, txn, txx, tyn, tyx, npts, xv, yv
+      real(rk) :: n1, n2, n3, n4
+      do i = 1, nl
+        if(i .ne. outer_loop)then
+          npts = 0.0_rk
+          cx = 0.0_rk
+          cy = 0.0_rk
+
+          do j = bpl(i), bpl(i + 1) - 1
+            b = loops(j)
+            cx = cx + SUM(bc(b)%x)
+            cy = cy + SUM(bc(b)%y)
+            npts = npts + real(size(bc(b)%x))
+          end do
+          cx = cx / npts
+          cy = cy / npts
+
+          n1 = 0.0_rk
+          n2 = 0.0_rk
+          n3 = 0.0_rk
+          n4 = 0.0_rk
+
+          lxn = cx; tyn = 0.0_rk
+          lyn = cy; txn = 0.0_rk
+          lxx = cx; tyx = 0.0_rk
+          lyx = cy; txx = 0.0_rk
+
+          do j = bpl(i), bpl(i + 1) - 1
+            b = loops(j)
+            do k = 1, size(bc(b)%x)
+              if(bc(b)%x(k) <= lxn)then
+                lxn = bc(b)%x(k)
+                tyn = tyn + bc(b)%y(k)
+                n1 = n1 + 1.0_rk
+              end if
+              if(bc(b)%x(k) >= lxx)then
+                lxx = bc(b)%x(k)
+                tyx = tyx + bc(b)%y(k)
+                n2 = n2 + 1.0_rk
+              end if
+              if(bc(b)%y(k) <= lyn)then
+                lyn = bc(b)%y(k)
+                txn = txn + bc(b)%x(k)
+                n3 = n3 + 1.0_rk
+              end if
+              if(bc(b)%y(k) >= lyx)then
+                lyx = bc(b)%y(k)
+                txx = txx + bc(b)%x(k)
+                n4 = n4 + 1.0_rk
+              end if
+            end do
+          end do
+          if(n1 > 0)then
+            tyn = tyn / n1
+          else
+            tyn = cy
+          end if
+          if(n2 > 0)then
+            tyx = tyx / n2
+          else
+            tyx = cy
+          end if
+          if(n3 > 0)then
+            txn = txn / n3
+          else
+            txn = cx
+          end if
+          if(n4 > 0)then
+            txx = txx / n4
+          else
+            txx = cx
+          end if
+
+          xv = 0.1_rk * abs(lxx - lxn)
+          yv = 0.1_rk * abs(lyx - lyn)
+
+          xdir = 0; ydir = 0
+          if( (abs(lxx - txx) < xv .and. abs(lxn - txn) < xv) .or. &
+            & (abs(lxx - txn) < xv .and. abs(lxn - txx) < xv) .or. &
+            & (abs(lyx - tyx) < yv .and. abs(lyn - tyn) < yv) .or. &
+            & (abs(lyx - tyn) < yv .and. abs(lyn - tyx) < yv) )then
+
+            if( (lxx - lxn) > (lyx - lyn) )then
+              xdir = 1
+            else
+              ydir = 1
+            end if
+          end if
+          lxx = lxx + 0.01_rk * xv
+          txx = txx + 0.01_rk * xv
+          lxn = lxn - 0.01_rk * xv
+          txn = txn - 0.01_rk * xv
+          lyx = lyx + 0.01_rk * yv
+          tyx = tyx + 0.01_rk * yv
+          lyn = lyn - 0.01_rk * yv
+          tyn = tyn - 0.01_rk * yv
+          if(xdir > 0)then
+            nnx = nnx + 1
+            xline(6 * (i - 1) + 1) = lxn
+            xline(6 * (i - 1) + 2) = tyn
+            xline(6 * (i - 1) + 3) = cx
+            xline(6 * (i - 1) + 4) = cy
+            xline(6 * (i - 1) + 5) = lxx
+            xline(6 * (i - 1) + 6) = tyx
+          end if
+          if(ydir > 0)then
+            nny = nny + 1
+            yline(6 * (i - 1) + 1) = txn
+            yline(6 * (i - 1) + 2) = lyn
+            yline(6 * (i - 1) + 3) = cx
+            yline(6 * (i - 1) + 4) = cy
+            yline(6 * (i - 1) + 5) = txx
+            yline(6 * (i - 1) + 6) = lyx
+          end if
+
+        end if
+      end do
+    end subroutine compute_loop_extrema
+
+    subroutine smooth_vals(r1,r,r2,c1,c,c2,ddx,ddy,nx,ny, mark)
+      integer,                intent(in)     :: r1, r, r2, c1, c, c2
+      real(rk), dimension(:), intent(in out) :: ddx, ddy
+      integer,                intent(in)     :: nx, ny
+      integer,  dimension(:), intent(in)     :: mark
+      integer :: j, k
+
+      do j = c1 + 1, c - 1
+        !smooth x-values between c1 and c along row r
+        k = j - c1
+        if(mark(nx * (r - 1) + j) < 0)then
+        ddx(nx * (r - 1) + j) = ddx(nx * (r - 1) + c1) + &
+                              & k * (ddx(nx * (r - 1) + c) - ddx(nx * (r - 1) + c1)) / &
+                              & ((c - c1) * 1.0_rk)
+
+        ddy(nx * (r - 1) + j) = ddy(nx * (r - 1) + c1) + &
+                              & k * (ddy(nx * (r - 1) + c) - ddy(nx * (r - 1) + c1)) / &
+                              & ((c - c1) * 1.0_rk)
+        end if
+      end do
+
+      do j = c + 1, c2 - 1
+        ! smooth x-values between c and c2 along row r
+        k = j - c
+        if(mark(nx * (r - 1) + j) < 0)then
+        ddx(nx * (r - 1) + j) = ddx(nx * (r - 1) + c) + &
+                              & k * (ddx(nx * (r - 1) + c2) - ddx(nx * (r - 1) + c)) / &
+                              & ((c2 - c) * 1.0_rk)
+        ddy(nx * (r - 1) + j) = ddy(nx * (r - 1) + c) + &
+                              & k * (ddy(nx * (r - 1) + c2) - ddy(nx * (r - 1) + c)) / &
+                              & ((c2 - c) * 1.0_rk)
+        end if
+      end do
+
+      do j = r1 + 1, r - 1
+        k = j - r1
+        if(mark(nx * (j - 1) + c) < 0)then
+        ! smooth y-values between r1 and r along column c
+        ddx(nx * (j - 1) + c) = ddx(nx * (r1 - 1) + c) + &
+                              & k * (ddx(nx * (r - 1) + c) - ddx(nx * (r1 - 1) + c)) / &
+                              & ((r - r1) * 1.0_rk)
+        ddy(nx * (j - 1) + c) = ddy(nx * (r1 - 1) + c) + &
+                              & k * (ddy(nx * (r - 1) + c) - ddy(nx * (r1 - 1) + c)) / &
+                              & ((r - r1) * 1.0_rk)
+        end if
+      end do
+
+      do j = r + 1, r2 - 1
+        k = j - r
+        ! smooth y-values between r and r2 along column c
+        if(mark(nx * (j - 1) + c) < 0)then
+        ddx(nx * (j - 1) + c) = ddx(nx * (r - 1) + c) + &
+                              & k * (ddx(nx * (r2 - 1) + c) - ddx(nx * (r - 1) + c)) / &
+                              & ((r2 - r) * 1.0_rk)
+        ddy(nx * (j - 1) + c) = ddy(nx * (r - 1) + c) + &
+                              & k * (ddy(nx * (r2 - 1) + c) - ddy(nx * (r - 1) + c)) / &
+                              & ((r2 - r) * 1.0_rk)
+        end if
+      end do
+
+    end subroutine smooth_vals
+
+    subroutine smooth_square(r1,r,r2,c1,c,c2,ddx,ddy,nx,ny,mark)
+      integer, intent(in) :: r1, r, r2, c1, c, c2, nx, ny
+      real(rk), dimension(:), intent(in out) :: ddx, ddy
+      integer, dimension(:), intent(in) :: mark
+      integer :: i, j
+
+      do i = r1, r - 1
+        do j = c1, c - 1
+          ddx(nx * (i - 1) + j) = ddx(nx * (i - 1) + c1) + &
+          & (j - c1) * (ddx(nx * (i - 1) + c) - ddx(nx * (i - 1) + c1)) / &
+          & (real(c - c1))
+
+          ddy(nx * (i - 1) + j) = ddy(nx * (r1 - 1) + j) + &
+          & (i - r1) * (ddy(nx * (r - 1) + j) - ddy(nx * (r1 - 1) + j)) / &
+          & (real(r - r1))
+        end do
+
+        do j = c + 1, c2
+          ddx(nx * (i - 1) + j) = ddx(nx * (i - 1) + c) + &
+          & (j - c) * (ddx(nx * (i - 1) + c2) - ddx(nx * (i - 1) + c)) / &
+          & (real(c2 - c))
+
+          ddy(nx * (i - 1) + j) = ddy(nx * (r1 - 1) + j) + &
+          & (i - r1) * (ddy(nx * (r - 1) + j) - ddy(nx * (r1 - 1) + j)) / &
+          & (real(r - r1))
+        end do
+      end do
+
+
+      do i = r + 1, r2
+        do j = c1, c - 1
+          ddx(nx * (i - 1) + j) = ddx(nx * (i - 1) + c1) + &
+          & (j - c1) * (ddx(nx * (i - 1) + c) - ddx(nx * (i - 1) + c1)) / &
+          & (real(c - c1))
+
+          ddy(nx * (i - 1) + j) = ddy(nx * (r - 1) + j) + &
+          & (i - r) * (ddy(nx * (r2 - 1) + j) - ddy(nx * (r - 1) + j)) / &
+          & real(r2 - r)
+        end do
+
+        do j = c + 1, c2
+          ddx(nx * (i - 1) + j) = ddx(nx * (i - 1) + c) + &
+          & (j - c) * (ddx(nx * (i - 1) + c2) - ddx(nx * (i - 1) + c)) / &
+          & (real(c2 - c))
+
+          ddy(nx * (i - 1) + j) = ddy(nx * (r - 1) + j) + &
+          & (i - r) * (ddy(nx * (r2 - 1) + j) - ddy(nx * (r - 1) + j)) / &
+          & real(r2 - r)
+        end do
+      end do
+
+    end subroutine smooth_square
 
     subroutine preprocess_quads(bc, x, y, nb, nx, ny, mycheck)
       type(curve), dimension(:),              intent(in)     :: bc
       real(rk),      dimension(:), allocatable, intent(in out) :: x, y
       integer,                                  intent(in)     :: nb
       integer,                                  intent(in out) :: nx, ny, mycheck
-      integer :: n1, n2, p1, p2, c1, c2
+      integer :: n1, n2, p1, p2, c1, c2, ctag
       integer :: ect, ne, n_int, b, i, j, iftrue, row, col, nrow, ncol
       real(rk) :: x1, x2, y1, y2, ix1, ix2, ix3, ix4, iy1, iy2, iy3, iy4, xx, yx
       real(rk) :: bx1, bx2, by1, by2
       real(rk), dimension(:), allocatable :: me
-      integer,  dimension(:), allocatable :: e
+      integer,  dimension(:), allocatable :: e, corners, flag
+      allocate(corners(size(x)))
 
+      corners(:) = 0
       mycheck = -1
 
       nx = nx - 1
@@ -927,7 +1549,7 @@ module quad_gen
       nrow = ny
       ncol = nx
       ne = nx * (ny + 1) + ny * (nx + 1)
-      allocate(e(2 * ne))
+      allocate(e(2 * ne), flag(ne))
       ect = 0
       do row = 1, nrow + 1
         do col = 1, ncol
@@ -953,6 +1575,8 @@ module quad_gen
       allocate(me(2 * ne))
       me(:) = xx + 2
 
+      flag(:) = 0
+
       do ect = 1, ne                     ! loop through all edges
         n1 = e(2 * ect - 1)              ! get points of edge
         n2 = e(2 * ect)
@@ -960,33 +1584,37 @@ module quad_gen
         x1 = x(n1); x2 = x(n2)           ! (x1,y1), (x2,y2) are endpoints of edge
         y1 = y(n1); y2 = y(n2)
         n_int = 0
-        call find_intersection_nos(x1, y1, x2, y2, bc, nb, ix1, iy1, n_int)
-
-        ! check that no more than 2 sides of any quad is intersected
-        call check_max_quad_intersection(nrow, ncol, ne, me, x, y, e, xx + 2)
+        call find_intersection_nos(x1, y1, x2, y2, bc, nb, ix1, iy1, n_int, ctag)
 
         if(n_int > 1)then
-          mycheck = 1
           me(2 * ect - 1) = ix1
           me(2 * ect)     = iy1
+        else if(n_int > 0)then
+          flag(ect) = 1
+        end if
+        if(ctag > 0)then
+          corners( e(2 * ect + ctag - 2) ) = 1
         end if
       end do
-
-      call add_new_vals(x, y, me, e, nrow, ncol, xx)
+      ! check that no more than 2 sides of any quad is intersected
+      call check_max_quad_intersection(nrow, ncol, ne, me, x, y, e, flag, corners, xx + 1.5)
+      call add_new_vals(x, y, me, e, nrow, ncol, mycheck, xx + 1.0_rk)
 
       nx = ncol
       ny = nrow
 
       deallocate(e)
+      deallocate(flag)
+      deallocate(corners)
       deallocate(me)
     end subroutine preprocess_quads
 
-    subroutine find_intersection_nos(x1, y1, x2, y2, bc, nb, ix, iy, n_int)
+    subroutine find_intersection_nos(x1, y1, x2, y2, bc, nb, ix, iy, n_int, ctag)
       real(rk),                    intent(in)     :: x1, y1, x2, y2
       type(curve), dimension(:), intent(in)     :: bc
       integer,                     intent(in)     :: nb
       real(rk),                    intent(in out) :: ix, iy
-      integer,                     intent(in out) :: n_int
+      integer,                     intent(in out) :: n_int, ctag
       real(rk) :: x3, y3, x4, y4, ix1, iy1, ix2, iy2, ix3, iy3
       integer :: p1, p2, p3, p4, c1, c2, cc1, cc2
       integer :: i, j, k, b, check, npts
@@ -997,6 +1625,7 @@ module quad_gen
       check = 1
       n_int = 0
       b = 0
+      ctag = 0
 
       do while(b < nb .and. check > 0)
         b = b + 1
@@ -1044,24 +1673,45 @@ module quad_gen
               ! if boundary intersects at edge corner
               else if(c1 > 0)then
                 cc1 = 1
+                ctag = 1
               ! if boundary intersects at edge corner
               else if(c2 > 0)then
                 cc2 = 1
+                ctag = 2
               end if
             end if
           end if
         end do
       end do
+      if(n_int > 0 .and. n_int < 2)then
+        if(cc1 > 0)then
+          n_int = 2
+          ix = 0.5_rk * (x1 + ix1)
+          iy = 0.5_rk * (y1 + iy1)
+        else if(cc2 > 0)then
+          n_int = 2
+          ix = 0.5_rk * (x2 + ix1)
+          iy = 0.5_rk * (y2 + iy1)
+        end if
+      else if(n_int < 1)then
+        if(cc1 > 0)then
+          ctag = 1
+        end if
+        if(cc2 > 0)then
+          ctag = 2
+        end if
+      end if
     end subroutine find_intersection_nos
 
-    subroutine check_max_quad_intersection(nrow, ncol, nedges, me, x, y, e, xx)
+    subroutine check_max_quad_intersection(nrow, ncol, nedges, me, x, y, e, flag, corners, xx)
       integer,  intent(in) :: nrow, ncol, nedges
       real(rk), dimension(:), intent(in out) :: me
-      integer,  dimension(:), intent(in) :: e
+      integer,  dimension(:), intent(in) :: e, flag, corners
       real(rk), dimension(:), intent(in) :: x, y
       real(rk), intent(in) :: xx
       integer :: e1, e2, e3, e4, check, row, col, vct, hct
       integer :: c1, c2, c3, c4, n1, n2, n3, n4
+      real(rk) :: xval, yval
 
       hct = 1
       vct = ncol * (nrow + 1) + 1
@@ -1069,42 +1719,132 @@ module quad_gen
       do row = 1, nrow
         do col = 1, ncol
           e1 = hct 
-          e2 = hct + ncol
-          e3 = vct
-          e4 = vct + 1
+          e3 = hct + ncol
+          e4 = vct
+          e2 = vct + 1
+
+          n1 = e(2 * e1 - 1)
+          n2 = e(2 * e1)
+          n4 = e(2 * e3 - 1)
+          n3 = e(2 * e3)
 
           c1 = 0
           c2 = 0
           c3 = 0
           c4 = 0
 
-          if(me(2 * e1 - 1) < xx)then
+          if(flag(e1) > 0)then
             c1 = 1
           end if
-          if(me(2 * e2 - 1) < xx)then
+          if(flag(e2) > 0)then
             c2 = 1
           end if
-          if(me(2 * e3 - 1) < xx)then
+          if(flag(e3) > 0)then
             c3 = 1
           end if
-          if(me(2 * e4 - 1) < xx)then
+          if(flag(e4) > 0)then
             c4 = 1
           end if
-
-          if( (c1 + c2 + c3 + c4) > 2)then
-            n1 = e(2 * e1 - 1)
-            n2 = e(2 * e1)
-            n3 = e(2 * e2 - 1)
-            n4 = e(2 * e2)
-
-            me(2 * e1 - 1) = 0.5_rk * (x(n1) + x(n2))
-            me(2 * e1    ) = 0.5_rk * (y(n1) + y(n2))
-            me(2 * e2 - 1) = 0.5_rk * (x(n2) + x(n3))
-            me(2 * e2    ) = 0.5_rk * (y(n2) + y(n3))
-            me(2 * e3 - 1) = 0.5_rk * (x(n3) + x(n4))
-            me(2 * e3    ) = 0.5_rk * (y(n3) + y(n4))
-            me(2 * e4 - 1) = 0.5_rk * (x(n4) + x(n1))
-            me(2 * e4    ) = 0.5_rk * (y(n4) + y(n1))
+          if((c1 + c2 + c3 + c4) > 2)then
+            if(me(2 * e1 - 1) .gt. xx)then
+              if(me(2 * e3 - 1) .gt. xx)then
+                me(2 * e1 - 1) = 0.5_rk * (x(n1) + x(n2))
+                me(2 * e1    ) = 0.5_rk * (y(n1) + y(n2))
+                me(2 * e3 - 1) = 0.5_rk * (x(n3) + x(n4))
+                me(2 * e3    ) = 0.5_rk * (y(n3) + y(n4))
+              else
+                xval = (me(2 * e3 - 1) - x(n4)) / (x(n3) - x(n4))
+                me(2 * e1 - 1) = x(n1) + xval * (x(n2) - x(n1))
+                me(2 * e1    ) = 0.5_rk * (y(n1) + y(n2))
+              end if
+            end if
+            if(me(2 * e2 - 1) .gt. xx)then
+              if(me(2 * e4 - 1) .gt. xx)then
+                me(2 * e2 - 1) = 0.5_rk * (x(n2) + x(n3))
+                me(2 * e2    ) = 0.5_rk * (y(n2) + y(n3))
+                me(2 * e4 - 1) = 0.5_rk * (x(n1) + x(n4))
+                me(2 * e4    ) = 0.5_rk * (y(n1) + y(n4))
+              else
+                yval = (me(2 * e4) - y(n1)) / (y(n4) - y(n1))
+                me(2 * e2 - 1) = 0.5_rk * (x(n2) + x(n3))
+                me(2 * e2    ) = y(n2) + yval * (y(n3) - y(n2))
+              end if
+            end if
+            if(me(2 * e3 - 1) .gt. xx)then
+              if(me(2 * e1 - 1) .gt. xx)then
+                me(2 * e3 - 1) = 0.5_rk * (x(n3) + x(n4))
+                me(2 * e3    ) = 0.5_rk * (y(n3) + y(n4))
+                me(2 * e1 - 1) = 0.5_rk * (x(n1) + x(n2))
+                me(2 * e1    ) = 0.5_rk * (y(n1) + y(n2))
+              else
+                xval = (me(2 * e1 - 1) - x(n1)) / (x(n2) - x(n1))
+                me(2 * e3 - 1) = x(n4) + xval * (x(n3) - x(n4))
+                me(2 * e3    ) = 0.5_rk * (y(n3) + y(n4))
+              end if
+            end if
+            if(me(2 * e4 - 1) .gt. xx)then
+              if(me(2 * e2 - 1) .gt. xx)then
+                me(2 * e4 - 1) = 0.5_rk * (x(n4) + x(n1))
+                me(2 * e4    ) = 0.5_rk * (y(n4) + y(n1))
+                me(2 * e2 - 1) = 0.5_rk * (x(n2) + x(n3))
+                me(2 * e2    ) = 0.5_rk * (y(n2) + y(n3))
+              else
+                yval = (me(2 * e2) - y(n2)) / (y(n3) - y(n2))
+                me(2 * e4 - 1) = 0.5_rk * (x(n4) + x(n1))
+                me(2 * e4    ) = y(n1) + yval * (y(n4) - y(n1))
+              end if
+            end if
+          else if( (c1 + c2 + c3 + c4) > 0)then
+            if(c1 > 0)then
+              if(corners(n1) > 0)then
+                if(me(2 * e1 - 1) .gt. xx)then
+                  me(2 * e1 - 1) = 0.75_rk * x(n1) + 0.25_rk * x(n2)
+                  me(2 * e1    ) = 0.75_rk * y(n1) + 0.25_rk * y(n2)
+                end if
+              else if(corners(n2) > 0)then
+                if(me(2 * e1 - 1) .gt. xx)then
+                  me(2 * e1 - 1) = 0.25_rk * x(n1) + 0.75_rk * x(n2)
+                  me(2 * e1    ) = 0.25_rk * y(n1) + 0.75_rk * y(n2)
+                end if
+              end if
+            else if(c2 > 0)then
+              if(corners(n2) > 0)then
+                if(me(2 * e2 - 1) .gt. xx)then
+                  me(2 * e2 - 1) = 0.75_rk * x(n2) + 0.25_rk * x(n3)
+                  me(2 * e2    ) = 0.75_rk * y(n2) + 0.25_rk * y(n3)
+                end if
+              else if(corners(n3) > 0)then
+                if(me(2 * e2 - 1) .gt. xx)then
+                  me(2 * e2 - 1) = 0.25_rk * x(n2) + 0.75_rk * x(n3)
+                  me(2 * e2    ) = 0.25_rk * y(n2) + 0.75_rk * y(n3)
+                end if
+              end if
+            else if(c3 > 0)then
+              if(corners(n3) > 0)then
+                if(me(2 * e3 - 1) .gt. xx)then
+                  me(2 * e3 - 1) = 0.75_rk * x(n3) + 0.25_rk * x(n4)
+                  me(2 * e3    ) = 0.75_rk * y(n3) + 0.25_rk * y(n4)
+                end if
+              else if(corners(n4) > 0)then
+                if(me(2 * e3 - 1) .gt. xx)then
+                  me(2 * e3 - 1) = 0.25_rk * x(n3) + 0.75_rk * x(n4)
+                  me(2 * e3    ) = 0.25_rk * y(n3) + 0.75_rk * y(n4)
+                end if
+              end if
+            else if(c4 > 0)then
+              if(corners(n4) > 0)then
+                if(me(2 * e4 - 1) .gt. xx)then
+                  me(2 * e4 - 1) = 0.75_rk * x(n4) + 0.25_rk * x(n1)
+                  me(2 * e4    ) = 0.75_rk * y(n4) + 0.25_rk * y(n1)
+                end if
+              else if(corners(n1) > 0)then
+                if(me(2 * e4 - 1) .gt. xx)then
+                  me(2 * e4 - 1) = 0.25_rk * x(n4) + 0.75_rk * x(n1)
+                  me(2 * e4    ) = 0.25_rk * y(n4) + 0.75_rk * y(n1)
+                end if
+              end if
+            end if
+          else
           end if
 
           hct = hct + 1
@@ -1176,7 +1916,7 @@ module quad_gen
       end if
     end subroutine line_line_intersect
 
-    subroutine line_point_intersection(x1,y1,x2,y2,x3,y3,p)
+    subroutine line_point_intersect(x1,y1,x2,y2,x3,y3,p)
       real(rk), intent(in)     :: x1,y1,x2,y2,x3,y3
       integer,  intent(in out) :: p
       real(rk) :: xx, yx, xn, yn
@@ -1190,51 +1930,32 @@ module quad_gen
         & (y3 > (yx + tol)) .or. ((y3 + tol) < yn) )then
         p = -1
       else
-        d = x2 * y3 - y2 * x3 + y1 * (x3 - x2) - x1 * (y3 - y2)
+        d = (x2 * y3 - y2 * x3) + y1 * (x3 - x2) - x1 * (y3 - y2)
         if(abs(d) > tol)then
           p = -1
         else
           p = 1
         end if
       end if
-    end subroutine line_point_intersection
-
-    subroutine line_point_intersect(x1, y1, x2, y2, x3, y3, iftrue)
-      real(rk), intent(in)     :: x1, y1, x2, y2, x3, y3
-      integer,  intent(in out) :: iftrue
-      real(rk) :: v1, v2, v3, v4, l1, l2
-      iftrue = 0
-
-      if( (x3 + tol) > MAX(x1, x2) .or. (x3 - tol) < MIN(x1, x2) .or. &
-        & (y3 + tol) > MAX(y1, y2) .or. (y3 - tol) < MIN(y1, y2) )then
-      else
-        v1 = x1 - x3
-        v2 = y1 - y3
-        v3 = x2 - x3
-        v4 = y2 - y3
-        l1 = sqrt(v1**2 + v2**2)
-        l2 = sqrt(v3**2 + v4**2)
-        if(l1 > 0)then
-          v1 = v1 / l1
-          v2 = v2 / l1
-        end if
-        if(l2 > 0)then
-          v3 = v3 / l2
-          v4 = v4 / l2
-        end if
-        if( abs(v1 * v4 - v2 * v3) < tol)then
-          iftrue = 1
-        end if
-      end if
     end subroutine line_point_intersect
+
 
     subroutine get_intersection_point(ix1,iy1,x1,y1,x2,y2,x3,y3,x4,y4)
       real(rk), intent(in out) :: ix1, iy1
       real(rk), intent(in) :: x1,y1,x2,y2,x3,y3,x4,y4
       real(rk) :: m1, m2, m3, m4, b1, b2
       real(rk) :: val
+      integer :: p1, p2
 
-      if( abs((y2 - y1) * (x4 - x3) - (y4 - y3) * (x2 - x1)) > tol)then
+      call line_point_intersect(x1, y1, x2, y2, x3, y3, p1)
+      call line_point_intersect(x1, y1, x2, y2, x4, y4, p2)
+      if(p1 > 0 .and. p2 < 0)then
+        ix1 = x3
+        iy1 = y3
+      else if(p2 > 0 .and. p1 < 0)then
+        ix1 = x4
+        iy1 = y4
+      else if( abs((y2 - y1) * (x4 - x3) - (y4 - y3) * (x2 - x1)) > tol)then
         m1 = y2 - y1
         m2 = x2 - x1
         m3 = y4 - y3
@@ -1252,17 +1973,18 @@ module quad_gen
         ix1 = 0.5_rk * (x2 + x1)
         iy1 = 0.5_rk * (y2 + y1)
       end if
+
     end subroutine get_intersection_point
 
-    subroutine add_new_vals(x, y, me, e, nrow, ncol, xx)
+    subroutine add_new_vals(x, y, me, e, nrow, ncol, check, xx)
       real(rk), dimension(:), allocatable, intent(in out) :: x, y
       real(rk), dimension(:),              intent(in)     :: me
       integer,  dimension(:),              intent(in)     :: e
-      integer,                             intent(in out) :: nrow, ncol
+      integer,                             intent(in out) :: nrow, ncol, check
       real(rk),                            intent(in)     :: xx
       integer, dimension(:), allocatable :: rtag, ctag
       real(rk), dimension(:), allocatable :: new_x, new_y
-      integer :: new_nn, i, j, ect, rct, row, col, cct, nx, ny
+      integer :: new_nn, i, j, k, ect, rct, row, col, cct, nx, ny
       integer :: n1, n2, n3, n4, n5, nn1, nn2, nn3
       nx = ncol
       ny = nrow
@@ -1277,6 +1999,7 @@ module quad_gen
         do j = 1, ncol
           if(me(2 * ect - 1) < (xx + 1))then
             ctag(j) = 1
+            check = 1
           end if
           ect = ect + 1
         end do
@@ -1285,6 +2008,7 @@ module quad_gen
         do j = 1, ncol + 1
           if(me(2 * ect - 1) < (xx + 1))then
             rtag(i) = 1
+            check = 1
           end if
           ect = ect + 1
         end do
@@ -1314,8 +2038,27 @@ module quad_gen
           if(ctag(col) > 0)then
             nn3 = nn1 + 1
             if(me(2 * ect + 1) < (xx + 1))then
-              new_x(nn3) = me(2 * ect + 1)
-              new_y(nn3) = me(2 * ect + 2)
+              new_x(nn3) = 0.5_rk * (new_x(nn1) + new_x(nn2))
+              new_y(nn3) = 0.5_rk * (new_y(nn1) + new_y(nn2))
+
+              if( ((me(2 * ect + 1) - new_x(nn1))**2 + &
+                 & (me(2 * ect + 2) - new_y(nn1))**2) < &
+                & ((me(2 * ect + 1) - new_x(nn3))**2 + &
+                 & (me(2 * ect + 2) - new_y(nn3))**2) )then
+
+                new_x(nn1) = me(2 * ect + 1)
+                new_y(nn1) = me(2 * ect + 2)
+              else if( ((me(2 * ect + 1) - new_x(nn2))**2 + &
+                      & (me(2 * ect + 2) - new_y(nn2))**2) < &
+                     & ((me(2 * ect + 1) - new_x(nn3))**2 + &
+                      & (me(2 * ect + 2) - new_y(nn3))**2) )then
+
+                new_x(nn2) = me(2 * ect + 1)
+                new_y(nn2) = me(2 * ect + 2)
+              else
+                new_x(nn3) = me(2 * ect + 1)
+                new_y(nn3) = me(2 * ect + 2)
+              end if
             else
               new_x(nn3) = ( new_x(nn1) + new_x(nn2) ) * 0.5_rk
               new_y(nn3) = ( new_y(nn1) + new_y(nn2) ) * 0.5_rk
@@ -1342,11 +2085,33 @@ module quad_gen
           new_x(nn2) = x(n2)
           new_y(nn1) = y(n1)
           new_y(nn2) = y(n2)
+
           if(rtag(row) > 0)then
-            nn3 = nn1 + ncol + 1 + SUM(ctag)
+            nn3 = (row + rct) * (ncol + 1 + SUM(ctag)) + col + cct
             if(me(2 * ect + 1) < (xx + 1))then
-              new_x(nn3) = me(2 * ect + 1)
-              new_y(nn3) = me(2 * ect + 2)
+
+              new_x(nn3) = 0.5_rk * (new_x(nn1) + new_x(nn2))
+              new_y(nn3) = 0.5_rk * (new_y(nn1) + new_y(nn2))
+
+              if( ((me(2 * ect + 1) - new_x(nn1))**2 + &
+                 & (me(2 * ect + 2) - new_y(nn1))**2) < &
+                & ((me(2 * ect + 1) - new_x(nn3))**2 + &
+                 & (me(2 * ect + 2) - new_y(nn3))**2) )then
+
+                new_x(nn1) = me(2 * ect + 1)
+                new_y(nn1) = me(2 * ect + 2)
+
+              else if( ((me(2 * ect + 1) - new_x(nn2))**2 + &
+                      & (me(2 * ect + 2) - new_y(nn2))**2) < &
+                     & ((me(2 * ect + 1) - new_x(nn3))**2 + &
+                      & (me(2 * ect + 2) - new_y(nn3))**2) )then
+
+                new_x(nn2) = me(2 * ect + 1)
+                new_y(nn2) = me(2 * ect + 2)
+              else
+                new_x(nn3) = me(2 * ect + 1)
+                new_y(nn3) = me(2 * ect + 2)
+              end if
             else
               new_x(nn3) = ( new_x(nn1) + new_x(nn2) ) * 0.5_rk
               new_y(nn3) = ( new_y(nn1) + new_y(nn2) ) * 0.5_rk
@@ -1367,7 +2132,7 @@ module quad_gen
       do row = 2, ny
         do col = 2, nx
           n1 = (row - 1) * (nx + 1) + col
-          if(new_x(n1) > xx)then
+          if(new_x(n1) >= xx)then
             n2 = (row - 1) * (nx + 1) + col - 1
             n3 = (row - 1) * (nx + 1) + col + 1
             n4 = (row - 2) * (nx + 1) + col
@@ -1498,10 +2263,10 @@ module quad_gen
             end if
           end if
         else if( (isct1 + isct2 + isct3 + isct4) < 3 )then
-          call line_point_intersection(bx1, by1, bx2, by2, x1, y1, p1)
-          call line_point_intersection(bx1, by1, bx2, by2, x2, y2, p2)
-          call line_point_intersection(bx1, by1, bx2, by2, x3, y3, p3)
-          call line_point_intersection(bx1, by1, bx2, by2, x4, y4, p4)
+          call line_point_intersect(bx1, by1, bx2, by2, x1, y1, p1)
+          call line_point_intersect(bx1, by1, bx2, by2, x2, y2, p2)
+          call line_point_intersect(bx1, by1, bx2, by2, x3, y3, p3)
+          call line_point_intersect(bx1, by1, bx2, by2, x4, y4, p4)
 
           !if the boundary edge does not intersect at a corner
           if( (p1 < 1) .and. (p2 < 1) .and. (p3 < 1) .and. (p4 < 1) )then
@@ -1678,10 +2443,10 @@ module quad_gen
           end if
         else if( (isct1 + isct2 + isct3 + isct4) < 4)then
 
-          call line_point_intersection(bx1, by1, bx2, by2, x1, y1, p1)
-          call line_point_intersection(bx1, by1, bx2, by2, x2, y2, p2)
-          call line_point_intersection(bx1, by1, bx2, by2, x3, y3, p3)
-          call line_point_intersection(bx1, by1, bx2, by2, x4, y4, p4)
+          call line_point_intersect(bx1, by1, bx2, by2, x1, y1, p1)
+          call line_point_intersect(bx1, by1, bx2, by2, x2, y2, p2)
+          call line_point_intersect(bx1, by1, bx2, by2, x3, y3, p3)
+          call line_point_intersect(bx1, by1, bx2, by2, x4, y4, p4)
 
           if( (p1 > 0) .and. (isct2 > 0) )then
             nx1 = x4 - x2
@@ -1770,10 +2535,10 @@ module quad_gen
           end if
         else if( (isct1 + isct2 + isct3 + isct4) < 5)then
 
-          call line_point_intersection(bx1, by1, bx2, by2, x1, y1, p1)
-          call line_point_intersection(bx1, by1, bx2, by2, x2, y2, p2)
-          call line_point_intersection(bx1, by1, bx2, by2, x3, y3, p3)
-          call line_point_intersection(bx1, by1, bx2, by2, x4, y4, p4)
+          call line_point_intersect(bx1, by1, bx2, by2, x1, y1, p1)
+          call line_point_intersect(bx1, by1, bx2, by2, x2, y2, p2)
+          call line_point_intersect(bx1, by1, bx2, by2, x3, y3, p3)
+          call line_point_intersect(bx1, by1, bx2, by2, x4, y4, p4)
 
           if( (p1 > 0) .and. (p3 > 0) )then
             iftrue = 3
@@ -3105,8 +3870,10 @@ module quad_gen
       ! first find closest point between boundary loop l and bx, by(bnum)
       call find_closest_point(bconn, bnum, x, y, bx, by, nn)
 
+      if(nbpl < 2)then
+        call twist_untwist(bconn, bnum, x, y, bx, by, nn)
       ! then try walking over boundaries
-      if(nbpl > 1)then
+      else
         call get_optimal_npb(bc, bconn, bnum, x, y, npb, bpl, loops, l, nn)
       end if
 
@@ -3165,6 +3932,45 @@ module quad_gen
         deallocate(tmp)
       end if
     end subroutine find_closest_point
+
+    subroutine twist_untwist(bconn, bnum, x, y, bx, by, nn)
+      integer,  dimension(:), intent(in out) :: bconn
+      integer,  dimension(:), intent(in)     :: bnum
+      real(rk), dimension(:), intent(in)     :: x, y, bx, by
+      integer,                intent(in)     :: nn
+      integer :: i, j, n_inv1, n_inv2, np, npos1, npos2
+      integer, dimension(:), allocatable :: tmp1, tmp2
+
+      np = size(bconn)
+      do i = size(bconn), 2, -1
+        if(bconn(i) < 1)then
+          np = i - 1
+        end if
+      end do
+
+      allocate(tmp1(np), tmp2(np))
+      tmp1(:np) = bconn(:np)
+
+      call get_n_inverted(n_inv1, npos1, bconn, bnum, x, y, bx, by, nn)
+
+      if(n_inv1 > 0)then
+
+        do i = 0, np - 2
+          do j = 1, np
+            tmp2(j) = tmp1(1 + MOD(j + i, np))
+          end do
+
+          call get_n_inverted(n_inv2, npos2, tmp2, bnum, x, y, bx, by, nn)
+
+          if(n_inv1 > n_inv2 .and. npos1 < npos2)then
+            bconn(:np) = tmp2(:np)
+            n_inv1 = n_inv2
+            npos1 = npos2
+          end if
+        end do
+      end if
+      deallocate(tmp1, tmp2)
+    end subroutine twist_untwist
 
     subroutine get_optimal_npb(bc, bconn, bnum, x, y, npb, bpl, loops, l, ngn)
       type(curve), dimension(:), intent(in)     :: bc
