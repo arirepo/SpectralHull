@@ -20,7 +20,7 @@ CC = cc
 CCOMPILEFLAGS  =  -c
 
 ### objects
-OBJ = triangle.o custom_Tri_wrapper.o splib.o globals.o condition.o dunavant.o nurbs.o spline.o fekete.o ncc_triangle.o fem_reordering.o quadri_elem.o approx_fekete.o grid_opt.o quad_gen.o grid_vis.o gen_basis.o element_opt.o bn_integral.o bcs.o lag_basis.o fem_utils.o spem_2d.o interp.o ortho_poly.o ps.o trimesher.o plot_curved_elems.o tester.o
+OBJ = triangle.o custom_Tri_wrapper.o splib.o globals.o condition.o dunavant.o nurbs.o spline.o fekete.o ncc_triangle.o fem_reordering.o quadri_elem.o approx_fekete.o grid_opt.o quad_gen.o grid_vis.o gen_basis.o element_opt.o bn_integral.o bcs.o lag_basis.o fem_utils.o spem_2d.o interp.o ortho_poly.o ps.o trimesher.o plot_curved_elems.o mfree.o tester.o
 
 ### compile and link
 quadgrid: $(OBJ)

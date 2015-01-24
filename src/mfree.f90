@@ -67,6 +67,9 @@ contains
           inter_pts => grd%el2edg(ielem)%edg2
        case (3)
           inter_pts => grd%el2edg(ielem)%edg3
+       case (4)
+          inter_pts => grd%el2edg(ielem)%edg4
+
        case default
           print *, 'something is wrong in computing fixed' &
                , ' points between two end points of a boundary edge. stop'
@@ -231,6 +234,9 @@ contains
           inter_pts => grd%el2edg(ielem)%edg2
        case (3)
           inter_pts => grd%el2edg(ielem)%edg3
+       case (4)
+          inter_pts => grd%el2edg(ielem)%edg4
+
        case default
           print *, 'something is wrong in computing fixed' &
                , ' points between two end points of a boundary edge. stop'
@@ -361,13 +367,23 @@ contains
   end subroutine full_A_x
 
   ! initialization based on given tag values
-  subroutine init_cond(grd, tags, vals, method, x)
+  subroutine init_cond(grd, tags, vals, method, x, funptr)
     implicit none
     type(grid), intent(in), target :: grd
     integer, dimension(:), intent(in) :: tags
     real*8, dimension(size(tags)), intent(in) :: vals
     character(len = *), intent(in) :: method
     real*8, dimension(:), intent(inout) :: x
+    abstract interface
+       function fnc(gridin, pt)
+         import
+         type(grid), intent(in) :: gridin
+         integer, intent(in) :: pt
+         real*8 :: fnc
+       end function fnc
+    end interface
+    procedure(fnc), optional :: funptr
+
 
     ! local vars
     integer :: i, j, k, loc, pt, ielem, iedg
@@ -399,7 +415,13 @@ contains
        ! fixing ICs at two end nodes of bedges
        do j = 1, 2
           pt = grd%ibedge(i, j)
-          x(pt) = vals(loc) 
+
+          if ( .not. present(funptr) ) then ! fix it to the given value
+             x(pt) = vals(loc) 
+          else ! use generic functionality
+             x(pt) = funptr(grd, pt)
+          end if
+
        end do
 
        ! find the element containing that edge and its locallity
@@ -414,6 +436,9 @@ contains
           inter_pts => grd%el2edg(ielem)%edg2
        case (3)
           inter_pts => grd%el2edg(ielem)%edg3
+       case (4)
+          inter_pts => grd%el2edg(ielem)%edg4
+
        case default
           print *, 'something is wrong in computing fixed' &
                , ' points between two end points of a boundary edge. stop'
@@ -426,7 +451,13 @@ contains
           ! loop over all interior pts on that edge
           do k = 1, size(inter_pts) 
              pt = inter_pts(k) ! global number of that node
-             x(pt) = vals(loc) 
+
+             if ( .not. present(funptr) ) then ! fix it to the given value
+                x(pt) = vals(loc) 
+             else ! use generic functionality
+                x(pt) = funptr(grd, pt)
+             end if
+
           end do ! k - loop
 
        end if
