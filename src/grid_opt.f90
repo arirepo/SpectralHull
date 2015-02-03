@@ -1137,7 +1137,7 @@ end select
 
     ! bullet proofing 
     if ( all( pin .eq. grd%p ) .and. &
-         all( eltypein .eq. grd%eltype ) ) then 
+         all( eltypein .eq. grd%eltype ) .and. (grd%galtype .eq. galtype) ) then 
        print *, 'warning : both "p" and element types are' &
             , ' equal to the current config. no midification is done!'
        return
@@ -1330,6 +1330,7 @@ end select
 
 end do
 
+if (grd%galtype .eq. 'PG') then
     ! fix the e2e map if any changes is made 
     ! in "transform_elem" in the winding of the
     ! physical elements
@@ -1338,6 +1339,9 @@ end do
 
     ! refill ibedgeELEM_local_edg
     call fill_ibedgeELEM_local_edg(grd)
+
+end if
+
 
     ! done here
   end subroutine add_more_points
@@ -1976,21 +1980,31 @@ t2 = dble(nint(t2))
 
     end select
 
+    if ( grd%galtype .eq. 'DG') then
+       indx = 1
+       ! grd%icon(elem, :) = -1
+    end if
+
     do j = 1, size(xnew)
        x = xnew(j); y = ynew(j)
-       ! check to see if the point already exist 
-       ! in the element itself 
-       exists = does_point_exist(grd, elem, x, y, tolerance)
-       if ( exists .ne. -1 ) go to 200 ! oh! exists and is one of skleton vertices
-       ! only for PG, check if the point exists in the neighbors of elem
+
+       ! only for PG, check if the point exists in the elem and/or neighbors
        ! if exist, don't update x, y and simply just add it to connectivities
        if ( grd%galtype .eq. 'PG') then
+
+          ! check to see if the point already exist 
+          ! in the element itself 
+          exists = does_point_exist(grd, elem, x, y, tolerance)
+          if ( exists .ne. -1 ) go to 200 ! oh! exists and is one of skleton vertices
+
+          ! neighbors ... 
           do i = 1, max_neigh
              neigh = grd%e2e(elem, i)
              if ( neigh .eq. -1) cycle ! wall! 
              exists = does_point_exist(grd, neigh, x, y, tolerance)
              if ( exists .ne. -1 ) go to 100
           end do
+
        end if
        !
        ! point (x,y) not in element and neighbors. well :) add it then!
