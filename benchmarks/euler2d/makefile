@@ -2,7 +2,7 @@
 # by Arash Ghasemi and Mary Barker
 ### NOTE!!! Please leave this section unaltered
 ###############################################
-VPATH = ../../src:
+VPATH = ./:../../src:
 %.o: %.f90
 	$(F90) $(COMPFLAGS) $^ -o $@
 %.o: %.f
@@ -14,8 +14,8 @@ VPATH = ../../src:
 ## NOTE!!! Now select your compiler from below 
 ### compiler
 # F90 = /usr/bin/gfortran
-# F90 = /opt/gcc/bin/gfortran
-F90 = /home/aghasemi/gcc-trunk/bin/gfortran
+F90 = /opt/gcc/bin/gfortran
+# F90 = /home/aghasemi/gcc-trunk/bin/gfortran
 CC = cc
 # CC = icc
 ##F90 = gfortran
@@ -37,7 +37,7 @@ LINK_SUFFIX  =     -llapack -lblas
 #          your test case problem. 
 
 ### objects
-OBJ = triangle.o custom_Tri_wrapper.o condition.o fekete.o ncc_triangle.o globals.o nurbs.o spline.o splib.o ortho_poly.o fem_reordering.o quadri_elem.o approx_fekete.o grid_opt.o lag_basis.o fem_utils.o dunavant.o gen_basis.o element_opt.o bn_integral.o bcs.o spem_2d.o interp.o ps.o trimesher.o plot_curved_elems.o  tester.o   
+OBJ = euler2d_eqs.o triangle.o custom_Tri_wrapper.o condition.o fekete.o ncc_triangle.o globals.o nurbs.o spline.o splib.o ortho_poly.o fem_reordering.o quadri_elem.o approx_fekete.o grid_opt.o lag_basis.o fem_utils.o dunavant.o gen_basis.o element_opt.o element_opt_dg2d.o bn_integral.o bcs.o spem_2d.o interp.o ps.o trimesher.o plot_curved_elems.o  tester.o   
 ###
 
 ### compile and link
