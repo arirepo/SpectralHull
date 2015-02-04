@@ -8,7 +8,7 @@ module element_opt_dg2d
 
   type, extends(element) :: element_dg2d
      private
-     integer :: number
+     integer :: number, npe
      ! (1..2, 1..npe) (1, npe) = x <> (2, npe) = y
      real*8, dimension(:, :), allocatable :: x
      real*8 :: gamma
@@ -66,6 +66,7 @@ contains
        class is (element_dg2d) !further init/alloc for DG element
 
           elem%number = ielem
+          elem%npe = npe
 
           if( allocated(elem%x) ) deallocate(elem%x)
           allocate( elem%x(2, npe) )
@@ -113,47 +114,30 @@ contains
   end subroutine init_elem_dg2d
 
   ! computes mass matrix for time marching of dg2d element
-  subroutine comp_mass_mat_dg2d(elem, ielem, grd)
+  subroutine comp_mass_mat_dg2d(elem)
     implicit none
     class(element_dg2d), intent(inout) :: elem
-    integer, intent(in) :: ielem ! element number
-    type(grid), intent(in) :: grd
 
     ! local vars
-    integer :: i, j, k, l, npe, ii, jj 
-    real*8 :: coeff = 1.0d0
+    integer :: i, j, k, l, ii, jj 
     real*8, dimension(:, :), allocatable :: MM
 
-    ! check this element must be initialized before
-    if (elem%init_lock .ne. 1221360) then
-       print *, 'element_dg2d ', ielem,' is not initialized! stop.'
-       stop
-    end if
 
-    npe = size(elem%psi, 1)
-    allocate(MM(elem%neqs * npe, elem%neqs * npe)) 
+    allocate(MM(elem%neqs * elem%npe, elem%neqs * elem%npe)) 
 
     ! HARD reset
     MM = 0.0d0
     elem%Mass = 0.0d0
 
-    ! select the coefficitn of the Jacobian of the transformation
-    select case (grd%elname(ielem))
-    case ( GEN_QUADRI)
-       coeff = 1.0d0
-    case ( GEN_TRIANGLE)
-       coeff = 0.5d0
-    end select
-
     ! fill out mass matrix for scalar eqs.
-    do i = 1, npe
-       do j = 1, npe
+    do i = 1, elem%npe
+       do j = 1, elem%npe
           do k = 1, elem%ngauss
 
              ! accumulate to the mass matrix of this element
              MM(i,j) = MM(i,j) &
                   + elem%psi(i,k) * elem%psi(j,k) &
-                  * coeff * elem%JJ(k) * elem%W(k)
+                  * elem%coeff * elem%JJ(k) * elem%W(k)
 
           end do
        end do
@@ -161,8 +145,8 @@ contains
 
     ! distribute diagonally to the mass matrix of element
     ! containing system of equations
-    do i = 1, npe
-       do j = 1, npe
+    do i = 1, elem%npe
+       do j = 1, elem%npe
           do l = 1, elem%neqs
              ii = (i-1) * elem%neqs + l
              jj = (j-1) * elem%neqs + l
@@ -186,18 +170,17 @@ contains
     real*8, dimension(:), intent(out) :: u
 
     ! local vars
-    integer :: k, npe
+    integer :: k
     real*8, dimension(size(elem%psi, 1)) :: psi
 
     ! hard reset
     u = 0.0d0
-    npe = size(elem%psi, 1)
 
     ! eval basis funcs at point (r, s)
     call elem%tbasis%eval(r, s, 0, psi)
 
     ! find u ...
-    do k = 1, npe
+    do k = 1, elem%npe
        u = u + elem%U(:,k) * psi(k)
     end do
 
@@ -247,21 +230,19 @@ contains
     real*8 :: xi, yi
     real*8, dimension(2), save :: der
     real*8 :: dx_dr, dx_ds, dy_dr, dy_ds
-    integer :: npe
     real*8, dimension(size(elem%psi,1)) :: d_psi_d_xi, d_psi_d_eta
 
     ! hard reset
     jac = 0.0d0; Jstar = 0.0d0; JJ = 0.0d0
     xi = 0.0d0; yi = 0.0d0; der = 0.0d0
     dx_dr = 0.0d0; dx_ds = 0.0d0; dy_dr= 0.0d0; dy_ds = 0.0d0
-    npe = size(elem%psi,1)
 
     ! computing the derivative of basis function at that point
     call elem%tbasis%eval(r, s, 1, d_psi_d_xi)
     call elem%tbasis%eval(r, s, 2, d_psi_d_eta)
 
     ! compute the components of jac
-    do i = 1, npe ! assuming iso-geometric expansion for x, y
+    do i = 1, elem%npe ! assuming iso-geometric expansion for x, y
 
        der(1) =  d_psi_d_xi(i)
        der(2) = d_psi_d_eta(i)
@@ -304,20 +285,18 @@ contains
     class(element_dg2d), intent(inout) :: elem
 
     ! local vars
-    integer :: i, k, npe
+    integer :: i, k
     real*8, dimension(2) :: der
 
-    npe = size(elem%psi, 1)
-
     ! compute and store ...
-    do i = 1, npe
+    do i = 1, elem%npe
        do k = 1, elem%ngauss
           ! get grad of basis functions
           der(1) = elem%d_psi_d_xi(i,k); der(2) = elem%d_psi_d_eta(i,k)
           ! transform computational grads to physical grads
           der = matmul(elem%Jstar(:,:,k), der)
           ! store
-          ! (1..npe, 1..ngauss, 1..2)
+          ! (1..elem%npe, 1..ngauss, 1..2)
           elem%d_psi_d_x(i, k, :) = der
        end do
     end do
@@ -333,13 +312,12 @@ contains
     real*8, dimension(:,:), intent(out) :: integ 
 
     ! local vars
-    integer :: i, k, idim, npe
+    integer :: i, k, idim
 
     ! HARD reset
     integ = 0.0d0
-    npe = size(elem%psi, 1)
 
-    do i = 1, npe
+    do i = 1, elem%npe
        do k = 1, elem%ngauss
           do idim = 1, 2 !2d case
              integ(:, i) = integ(:, i) &
