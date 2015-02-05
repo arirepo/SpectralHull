@@ -6,9 +6,26 @@ module element_opt_dg2d
 
   private
 
+  type neigh_dg
+     ! the neighbor element number and number of 
+     !gauss points per this common segment
+     integer :: elnum, ngpseg
+     ! the element-wise location of 1d Gauss legendre quad rule on the segment
+     ! dim = 1:ngpseg
+     real*8, dimension(:), allocatable :: r_in, s_in, r_out, s_out, W
+     ! Riemann flux on the edge stored at Gauss points (1:neqs, 1:ngpseg) 
+     real*8, dimension(:, :), allocatable :: Fstar
+  end type neigh_dg
+
+  type edg_dg
+     integer :: tag !can be used for BCs
+     integer, dimension(:) , allocatable :: pts
+     type(neigh_dg), dimension(:) , allocatable :: neighs
+  end type edg_dg
+
   type, extends(element) :: element_dg2d
      private
-     integer :: number, npe
+     integer :: number, npe, elname, p, eltype, npedg, nedgs
      ! (1..2, 1..npe) (1, npe) = x <> (2, npe) = y
      real*8, dimension(:, :), allocatable :: x
      real*8 :: gamma
@@ -22,6 +39,9 @@ module element_opt_dg2d
      ! fluxes evaluated at Gauss points (1..neqs, 1..ngauss, 1..2) 
      real*8, dimension(:, :, :), allocatable :: Fk
      real*8 :: coeff
+
+     !
+     type(edg_dg), dimension(:), allocatable :: edgs
 
   contains
 
@@ -50,7 +70,9 @@ contains
     real*8, intent(in) :: gamma
 
     ! local vars
-    integer :: npe
+    integer :: npe, ii, jj, edgnum, local_edg, pt1, pt2, last_pt
+    integer :: int1, int2
+    integer, dimension(:), allocatable :: pts
 
     ! init the base (parent) class
     call init_elem(elem, ielem, grd, neqs)  
@@ -67,6 +89,10 @@ contains
 
           elem%number = ielem
           elem%npe = npe
+          elem%elname = grd%elname(ielem)
+          elem%p = grd%p(ielem)
+          elem%eltype = grd%eltype(ielem)
+          elem%npedg = 0 ! init p=0,1
 
           if( allocated(elem%x) ) deallocate(elem%x)
           allocate( elem%x(2, npe) )
@@ -94,13 +120,82 @@ contains
           elem%Fk = 0.0d0
 
           ! select the coefficient of the Jacobian of the transformation
-          select case (grd%elname(ielem))
+          select case (elem%elname)
           case ( GEN_QUADRI)
              elem%coeff = 1.0d0
+             elem%nedgs = 4
           case ( GEN_TRIANGLE)
              elem%coeff = 0.5d0
+             elem%nedgs = 3
           end select
 
+          !
+          ! allocate and init edges
+          !
+          if ( allocated(elem%edgs) ) deallocate(elem%edgs)
+          allocate(elem%edgs(elem%nedgs))
+
+          ! adding neighbors
+          select case (elem%elname)
+          case ( GEN_QUADRI)
+
+             ! allocate/init neighbors (initially one neighbor!)
+             do ii = 1, 4
+                allocate(elem%edgs(ii)%neighs(1))
+             end do
+             elem%edgs(2)%neighs(1)%elnum = grd%e2e(ielem, 1)
+             elem%edgs(3)%neighs(1)%elnum = grd%e2e(ielem, 2)
+             elem%edgs(4)%neighs(1)%elnum = grd%e2e(ielem, 3)
+             elem%edgs(1)%neighs(1)%elnum = grd%e2e(ielem, 4)
+
+          case ( GEN_TRIANGLE)
+
+             ! allocate/init neighbors (initially one neighbor!)
+             do ii = 1, 3
+                allocate(elem%edgs(ii)%neighs(1))
+             end do
+             elem%edgs(2)%neighs(1)%elnum = grd%e2e(ielem, 1)
+             elem%edgs(3)%neighs(1)%elnum = grd%e2e(ielem, 2)
+             elem%edgs(1)%neighs(1)%elnum = grd%e2e(ielem, 3)
+
+          end select
+
+          ! adding points per edge
+          if ( elem%p > 0 ) then ! we have points on the edges 
+             elem%npedg = size(grd%el2edg(ielem)%edg1) + 2 
+             ! end points are included!
+
+             last_pt = elem%nedgs + 1
+             allocate(pts(elem%npedg))
+
+             do ii = 1, size(elem%edgs)
+                pt1 = ii
+                pt2 = ii + 1
+                if ( ii .eq. size(elem%edgs) ) pt2 = 1
+
+                if ( elem%p >= 2 ) then !higher order elements
+                   int1 = last_pt
+                   int2 = last_pt + elem%npedg - 3
+                   pts = (/ pt1, (/ (jj, jj = int1, int2) /) , pt2 /)
+                   last_pt = int2 + 1
+                else
+                   pts = (/ pt1, pt2 /)
+                end if
+
+                allocate(elem%edgs(ii)%pts(elem%npedg))
+                elem%edgs(ii)%pts = pts                
+             end do
+
+             deallocate(pts)
+          end if
+
+          ! specify the tag of the edges
+          elem%edgs(:)%tag = 0 ! initially everything is interior edge
+          if ( grd%el2bn(ielem, 1) .ne. 0 ) then ! there is a boundary edge
+             edgnum = grd%el2bn(ielem, 2)
+             local_edg = grd%ibedgeELEM_local_edg(edgnum)
+             elem%edgs(local_edg)%tag =  grd%ibedgeBC(edgnum)
+          end if
 
        class default
 
