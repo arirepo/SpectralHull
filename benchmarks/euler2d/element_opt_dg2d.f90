@@ -2,6 +2,7 @@ module element_opt_dg2d
   use element_opt
   use grid_opt
   use euler2d_eqs
+  use spline
   implicit none
 
   private
@@ -10,9 +11,20 @@ module element_opt_dg2d
      ! the neighbor element number and number of 
      !gauss points per this common segment
      integer :: elnum, ngpseg
+     ! physical coords (x,y) of start and end of this segment shared with neighbor
+     real*8 :: xs(2), xe(2) 
      ! the element-wise location of 1d Gauss legendre quad rule on the segment
      ! dim = 1:ngpseg
-     real*8, dimension(:), allocatable :: r_in, s_in, r_out, s_out, W
+     real*8, dimension(:), allocatable :: xi, W
+     ! local coords in the element (xloc_in) 
+     ! and in the neighboring element (xloc_out)
+     ! (1, 1:ngpseg) = xi, (2, 1:ngpseg) = eta 
+     real*8, dimension(:,:), allocatable :: xloc_in, xloc_out
+     ! physical coords (x(t), y(t)) in parametric space <t> 
+     ! and derivatives (dx/dt, dy/dt) at the gauss points 
+     ! (1, 1:ngpseg) = x, (2, 1:ngpseg) = y 
+     real*8, dimension(:,:), allocatable :: x, dx
+
      ! Riemann flux on the edge stored at Gauss points (1:neqs, 1:ngpseg) 
      real*8, dimension(:, :), allocatable :: Fstar
   end type neigh_dg
@@ -27,7 +39,9 @@ module element_opt_dg2d
      private
      integer :: number, npe, elname, p, eltype, npedg, nedgs
      ! (1..2, 1..npe) (1, npe) = x <> (2, npe) = y
-     real*8, dimension(:, :), allocatable :: x
+     real*8, dimension(:, :), allocatable :: x !physic. coords
+     ! (1..2, 1..npe) (1, npe) = xi <> (2, npe) = eta
+     real*8, dimension(:, :), allocatable :: x_loc !local coords
      real*8 :: gamma
      ! (neqs * npe, neqs * npe)
      real*8, dimension(:, :), allocatable :: Mass
@@ -52,8 +66,17 @@ module element_opt_dg2d
      procedure, public :: comp_metric_jacobian => comp_Jstar_point_dg
      procedure, private :: comp_dpsi => comp_d_psi_d_x
      procedure, public :: comp_int_integ => comp_inter_integral
+     procedure, public :: xy2rs => xy2rs_dg
+     procedure, public :: init_edg_quadrat => init_elem_edg_quadratures
 
   end type element_dg2d
+
+  type dg_srtuct
+
+     type(grid) :: grd
+     type(element_dg2d), dimension(:), allocatable :: elems
+
+  end type dg_srtuct
 
 
   public :: element_dg2d
@@ -92,12 +115,17 @@ contains
           elem%elname = grd%elname(ielem)
           elem%p = grd%p(ielem)
           elem%eltype = grd%eltype(ielem)
-          elem%npedg = 0 ! init p=0,1
+          elem%npedg = elem%p + 1 ! init p=0,1
 
           if( allocated(elem%x) ) deallocate(elem%x)
           allocate( elem%x(2, npe) )
           elem%x(1, :) = grd%x( grd%icon(ielem, 1:grd%npe(ielem)) ) 
           elem%x(2, :) = grd%y( grd%icon(ielem, 1:grd%npe(ielem)) ) 
+
+          if( allocated(elem%x_loc) ) deallocate(elem%x_loc)
+          allocate( elem%x_loc(2, npe) )
+          elem%x_loc(1, :) = grd%maselem(ielem)%xi
+          elem%x_loc(2, :) = grd%maselem(ielem)%eta
 
           
           elem%gamma = gamma
@@ -135,14 +163,23 @@ contains
           if ( allocated(elem%edgs) ) deallocate(elem%edgs)
           allocate(elem%edgs(elem%nedgs))
 
+          !
+          ! allocate/init neighbors (initially one neighbor!)
+          !
+          ! determine the start and the end of the segments shared with neighbors
+          do ii = 1, elem%nedgs
+             allocate(elem%edgs(ii)%neighs(1))
+             pt1 = ii
+             pt2 = ii + 1
+             if ( ii .eq. elem%nedgs ) pt2 = 1
+             elem%edgs(ii)%neighs(1)%xs = elem%x(:, pt1)
+             elem%edgs(ii)%neighs(1)%xe = elem%x(:, pt2) 
+          end do
+
           ! adding neighbors
           select case (elem%elname)
           case ( GEN_QUADRI)
 
-             ! allocate/init neighbors (initially one neighbor!)
-             do ii = 1, 4
-                allocate(elem%edgs(ii)%neighs(1))
-             end do
              elem%edgs(2)%neighs(1)%elnum = grd%e2e(ielem, 1)
              elem%edgs(3)%neighs(1)%elnum = grd%e2e(ielem, 2)
              elem%edgs(4)%neighs(1)%elnum = grd%e2e(ielem, 3)
@@ -150,10 +187,6 @@ contains
 
           case ( GEN_TRIANGLE)
 
-             ! allocate/init neighbors (initially one neighbor!)
-             do ii = 1, 3
-                allocate(elem%edgs(ii)%neighs(1))
-             end do
              elem%edgs(2)%neighs(1)%elnum = grd%e2e(ielem, 1)
              elem%edgs(3)%neighs(1)%elnum = grd%e2e(ielem, 2)
              elem%edgs(1)%neighs(1)%elnum = grd%e2e(ielem, 3)
@@ -424,5 +457,248 @@ contains
 
     ! done here
   end subroutine comp_inter_integral
+
+  ! computes local coords (r,s) given the
+  ! global coordinates (x,y) using a robust
+  ! Newton method.
+  ! 
+  ! This should be applied consistently to
+  ! higher-order elements also.
+  
+  subroutine xy2rs_dg(elem, x, y, maxitr, tolrs, r, s)
+    implicit none
+    class(element_dg2d), intent(inout) :: elem
+    real*8, intent(in) :: x, y
+    integer, intent(in) :: maxitr
+    real*8, intent(in) :: tolrs
+    real*8, intent(out) :: r, s
+
+    ! local vars
+    integer :: i, j, npt, pt 
+    real*8 :: val
+    real*8, dimension(elem%npe) :: psi, d_psi_d_xi, d_psi_d_eta
+    real*8, dimension(2), save :: der, F, delta
+    real*8, dimension(2,2), save:: JJ, Jinv
+
+    ! initial guess
+    r = 0.25d0; s =0.25d0
+    npt = elem%npe
+
+    do j = 1, maxitr ! main Newton iteration loop
+
+       ! setting up Newton functional
+       F = (/ x, y /)
+
+       ! evaluating basis functions
+       call elem%tbasis%eval(r, s, 0,  psi        )
+       call elem%tbasis%eval(r, s, 1,  d_psi_d_xi )
+       call elem%tbasis%eval(r, s, 2,  d_psi_d_eta)
+
+       ! HARD reset
+       JJ = 0.0d0; Jinv = 0.0d0
+
+       do i = 1, npt
+
+          pt = i
+          val = psi(i)
+          der(1) = d_psi_d_xi(i); der(2) = d_psi_d_eta(i)
+
+          F = F - (/ (elem%x(1, pt) * val) , (elem%x(2, pt) * val) /)
+          JJ(1,1) =  JJ(1,1) + elem%x(1, pt) * der(1) 
+          JJ(1,2) =  JJ(1,2) + elem%x(1, pt) * der(2)
+          JJ(2,1) =  JJ(2,1) + elem%x(2, pt) * der(1)
+          JJ(2,2) =  JJ(2,2) + elem%x(2, pt) * der(2)
+
+       end do
+
+       Jinv(1,1) = JJ(2,2)
+       Jinv(2,2) = JJ(1,1)
+       Jinv(2,1) = -JJ(2,1)
+       Jinv(1,2) = -JJ(1,2)
+       Jinv = 1.0d0 /(JJ(1,1) * JJ(2,2) - JJ(2,1) * JJ(1,2)) * Jinv
+       delta = matmul(Jinv, F)
+
+       r = r + delta(1)
+       s = s + delta(2)
+
+       if ( sqrt(sum(delta*delta)) .le. tolrs ) then
+          ! robust bug checking before returning
+          if ( (elem%p < 2) .and. (j > 2) ) then
+             print *, 'number of itr is ', j, ' and is greater than 2 ' &
+                    , 'for linear element with number', elem%number, '! stop.'
+             stop
+          else if (  (r > (1.0d0 + tolrs)) .or. (s > (1.0d0 + tolrs)) &
+               .or.  (r < (0.0d0 - tolrs)) .or. (s < (0.0d0 - tolrs)) ) then
+             ! print *, '(r,s) = ', r, s ,' out of range! stop.'
+             ! stop 
+          end if
+          ! print *, 'j = ', j , 'error = ', sqrt(sum(delta*delta))
+          return
+       end if
+
+    end do
+
+    print *, 'xy2rs_dg(...) did not converge' &
+         , ' to desired tolerance in ', maxitr, 'iterations' &
+         , ' at point (', x, y, ')! stop.'
+    stop
+
+    ! done here
+  end subroutine xy2rs_dg
+
+  subroutine init_elem_edg_quadratures(elem, wspace, iedg, tol)
+    implicit none
+    class(element_dg2d), intent(inout), target :: elem
+    class(dg_srtuct), intent(inout), target :: wspace ! work space
+    integer, intent(in) :: iedg !edge number
+    real*8, intent(in) :: tol
+
+    ! local vars
+    integer :: i, j, max_npedg, r, tag
+    type(edg_dg), pointer :: tedg => null()
+    type(neigh_dg), pointer :: tneigh => null()
+    real*8, parameter :: alpha = 0.0d0, beta  = 0.0d0
+    logical :: do_snap = .false.
+    type(curve), pointer :: tcurve=>null()
+    real*8, dimension(:), pointer :: t=>null(), xs=>null(), ys=>null()
+    real*8 :: tt, x1, y1, x2, y2, xq, yq, xdot, ydot
+    type(grid), pointer :: grd => null()
+    real*8 :: t1, t2
+    real*8, dimension(:), allocatable :: derjac
+
+    ! HARD reset
+    do_snap = .false.
+
+    grd => wspace%grd
+    tedg => elem%edgs(iedg)
+    tag = tedg%tag
+
+    if ( tag .ne. 0 ) then
+       ! is a boundary element 
+       do_snap = .true.
+       tcurve => grd%bn_curves(tag)
+       t => tcurve%t
+       xs => tcurve%x
+       ys => tcurve%y
+    end if
+
+    do j = 1, size(tedg%neighs) ! loop over all neighbors to that edge (shared segments)
+
+       tneigh => tedg%neighs(j) ! select this neighbor 
+
+       ! find the maximum number of 1d interpolation (Lagrange) points per this shared 
+       ! segment with the j^th neighbor of this edge.
+       !
+       ! HINT : use npedg info to see how many points per edge we have in this elem
+       ! and this neighbor. and take the maximum as 
+       ! the highest possible degree of a 1d polynomial that can be defined on that
+       ! part of the shared segment 
+       ! 
+       if (tneigh%elnum .eq. -1)  then !wall
+          max_npedg = elem%npedg ! count on element itself
+       else
+          max_npedg = max(elem%npedg, wspace%elems(tneigh%elnum)%npedg)
+       end if
+
+       ! degree of exactness relation for 1d Gauss legendre: 2r - 1 = max_npedg -1
+       r = nint(1.5d0 * dble(max_npedg) / dble(2)) ! 1.5 is safety factor :)
+       tneigh%ngpseg = r
+
+       ! allocate neigh specific arrays
+       allocate(tneigh%xi(r), tneigh%W(r))
+       allocate(tneigh%xloc_in(2, r), tneigh%xloc_out(2, r))
+       allocate(tneigh%x(2, r), tneigh%dx(2, r))
+       ! alloc/init Fstar(1:neqs, 1:ngpseg) 
+       allocate(tneigh%Fstar(elem%neqs, r))
+
+       tneigh%xi = 0.0d0; tneigh%W = 0.0d0
+       tneigh%xloc_in = 0.0d0; tneigh%xloc_out = 0.0d0
+       tneigh%x = 0.0d0; tneigh%dx = 0.0d0
+       tneigh%Fstar = 0.0d0
+
+       ! computing Legendre-Gauss-Jacobi points for integration
+       ! and corresponding weight functions
+       allocate(derjac(r))
+       call ZEJAGA(r, alpha, beta, tneigh%xi, derjac)
+       call WEJAGA(r, alpha, beta, tneigh%xi, derjac, tneigh%W)
+       deallocate(derjac)
+
+       ! 1 is the start and 2 is the end of this edge segment; just for convention
+       x1 = tneigh%xs(1); x2 = tneigh%xe(1) 
+       y1 = tneigh%xs(2); y2 = tneigh%xe(2) 
+
+       ! find the constant derivatives
+       xdot = 0.5d0 * (x2 - x1)
+       ydot = 0.5d0 * (y2 - y1)
+
+       do i = 1, r
+
+          ! Mapping of coordinates of Gauss-Legendre quadrature
+          ! for straight edges to physical space
+          xq = x1 + (tneigh%xi(i) + 1.0d0) / 2.0d0 * (x2 - x1) 
+          yq = y1 + (tneigh%xi(i) + 1.0d0) / 2.0d0 * (y2 - y1) 
+
+          ! if boundary edge then also snapp <x> and <dx>
+          if ( do_snap ) then
+             call find_t(grd, tag, x1, y1, tol, t1)
+             if ( t1 .eq. -1.0d0) then
+                print *, 'error : the parameter t can not be computed' &
+                     , ' for point (', x1, ',', y1,') on ' &
+                     , 'edg # ', iedg,'. stop.'
+                stop
+             end if
+             call find_t(grd, tag, x2, y2, tol, t2)
+             if ( t2 .eq. -1.0d0) then
+                print *, 'error : the parameter t can not be computed' &
+                     , ' for point (', x2, ',', y2,') on ' &
+                     , 'edg # ', iedg,'. stop.'
+                stop
+             end if
+
+             call find_t(grd, tag, xq, yq, tol, tt)
+             if ( tt .eq. -1.0d0) then
+                print *, 'error : the parameter t can not be computed' &
+                     , ' for point (', xq, ',', yq,') on ' &
+                     , 'edg # ', iedg,'. stop.'
+                stop
+             end if
+             ! find new snapped xq and yq on the curve
+             xq = 0.0d0; yq = 0.0d0
+             call spline_nurbs_eval2(tt, xs, ys, tcurve%a, tcurve%b, tcurve%c, &
+                  & tcurve%Mx, tcurve%My, t, xq, yq, 'interp', tcurve%btype)
+  
+             ! computing derivatives xdot and ydot ...
+             xdot = 0.0d0; ydot = 0.0d0
+             call spline_nurbs_eval2(tt, xs, ys, tcurve%a, tcurve%b, tcurve%c, &
+                  & tcurve%Mx, tcurve%My, t, xdot, ydot, 'diff1', tcurve%btype)
+
+             ! add stuff coming from chain rule for differentiation
+             xdot = xdot * 0.5d0 * (t2 - t1)
+             ydot = ydot * 0.5d0 * (t2 - t1)
+
+          end if
+
+          ! store physical coords and derivatives
+          tneigh%x(1,i) = xq; tneigh%x(2,i) = yq
+          tneigh%dx(1,i) = xdot; tneigh%dx(2,i) = ydot
+
+          ! convert physical (xq, yq) to local coords
+          ! (r,s) in this element store in this element
+          !
+          ! xy2rs_dg(elem, x, y, maxitr, tolrs, r, s)
+          call elem%xy2rs(xq , yq, 40, tol &
+               , tneigh%xloc_in(1,i), tneigh%xloc_in(2,i))
+          ! (r, s) in the neighbor element stored in this element
+          if (tneigh%elnum .ne. -1)  then
+             call wspace%elems(tneigh%elnum)%xy2rs(xq , yq &
+                  , 40, tol, tneigh%xloc_out(1,i), tneigh%xloc_out(2,i))
+          end if
+
+       end do ! next quadrature point per the current segment shared with current neighbor
+
+    end do ! next neighbor per the current edge
+ 
+    ! done here
+  end subroutine init_elem_edg_quadratures
 
 end module element_opt_dg2d
