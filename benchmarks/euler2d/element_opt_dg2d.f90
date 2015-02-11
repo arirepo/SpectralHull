@@ -30,6 +30,10 @@ module element_opt_dg2d
      ! arc length at the gauss points of this segment
      ! s(k) = sqrt(xdot(k)^2 + ydot(k)^2) , k = 1..ngpseg 
      real*8, dimension(:), allocatable :: s 
+     ! all basis functions evaluated at all gauss points per
+     ! this shared segment with neighbor element.
+     ! (1:npe, 1:ngpseg)
+     real*8, dimension(:, :), allocatable :: psi_in
 
      ! Riemann flux on the edge stored at Gauss points (1:neqs, 1:ngpseg) 
      real*8, dimension(:, :), allocatable :: Fstar
@@ -75,6 +79,8 @@ module element_opt_dg2d
      procedure, public :: xy2rs => xy2rs_dg
      procedure, public :: init_edg_quadrat => init_elem_edg_quadratures
      procedure, public :: comp_Fstar
+     procedure, public :: comp_bnd_integ => comp_bnd_integral
+
   end type element_dg2d
 
   type bc
@@ -625,12 +631,15 @@ contains
        allocate(tneigh%xloc_in(2, r), tneigh%xloc_out(2, r))
        allocate(tneigh%x(2, r), tneigh%dx(2, r))
        allocate(tneigh%n(2, r), tneigh%s(r))
+       allocate(tneigh%psi_in(elem%npe, r))
        ! alloc/init Fstar(1:neqs, 1:ngpseg) 
        allocate(tneigh%Fstar(elem%neqs, r))
 
        tneigh%xi = 0.0d0; tneigh%W = 0.0d0
        tneigh%xloc_in = 0.0d0; tneigh%xloc_out = 0.0d0
        tneigh%x = 0.0d0; tneigh%dx = 0.0d0
+       tneigh%n = 0.0d0; tneigh%s = 0.0d0
+       tneigh%psi_in = 0.0d0
        tneigh%Fstar = 0.0d0
 
        ! computing Legendre-Gauss-Jacobi points for integration
@@ -714,7 +723,12 @@ contains
                   , 40, tol, tneigh%xloc_out(1,i), tneigh%xloc_out(2,i))
           end if
 
-       end do ! next quadrature point per the current segment shared with current neighbor
+          ! store the full span basis functions of this element 
+          ! evaluated at the current local coordinates of this element
+          call elem%tbasis%eval(tneigh%xloc_in(1, i), tneigh%xloc_in(2, i) &
+               , 0, tneigh%psi_in(:, i))
+
+       end do ! next quadr. point per the current shared segment
 
     end do ! next neighbor per the current edge
  
@@ -815,5 +829,35 @@ contains
     ! done here
   end subroutine comp_Fstar
 
+  ! computes int_dOmega(w Fijnj dn) on the current <tneigh>
+  ! shared segment and accumulates the result to <integ>!
+  !
+  ! HINT : be careful! freez the initial value of <integ>
+  ! before looping over edges of the element and then looping
+  ! on the neighbors per edge!
+  subroutine comp_bnd_integral(elem, tneigh, integ)
+    implicit none
+    class(element_dg2d), intent(in) :: elem
+    type(neigh_dg), intent(in) :: tneigh
+    real*8, dimension(:,:), intent(inout) :: integ 
+
+    ! local vars
+    integer :: i, k
+
+    ! HINT : index <i> can be restricted to nodes 
+    ! on the current edg to improve performance!
+    do k = 1, tneigh%ngpseg
+
+       ! add to boundary integral
+       do i = 1, elem%npe
+          integ(:, i) = integ(:, i) &
+               + tneigh%psi_in(i, k) * tneigh%Fstar(:, k) &
+               * tneigh%s(k) * tneigh%W(k) 
+       end do
+
+    end do ! next gauss point per neighbor segment
+
+    ! done here
+  end subroutine comp_bnd_integral
 
 end module element_opt_dg2d
