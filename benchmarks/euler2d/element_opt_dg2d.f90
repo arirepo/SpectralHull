@@ -24,6 +24,12 @@ module element_opt_dg2d
      ! and derivatives (dx/dt, dy/dt) at the gauss points 
      ! (1, 1:ngpseg) = x, (2, 1:ngpseg) = y 
      real*8, dimension(:,:), allocatable :: x, dx
+     ! unit normal vector at the gauss points of this segment
+     ! (1, 1:ngpseg) = nx , (2, 1:ngpseg) = ny
+     real*8, dimension(:, :), allocatable :: n
+     ! arc length at the gauss points of this segment
+     ! s(k) = sqrt(xdot(k)^2 + ydot(k)^2) , k = 1..ngpseg 
+     real*8, dimension(:), allocatable :: s 
 
      ! Riemann flux on the edge stored at Gauss points (1:neqs, 1:ngpseg) 
      real*8, dimension(:, :), allocatable :: Fstar
@@ -62,19 +68,29 @@ module element_opt_dg2d
      procedure, nopass, public :: init => init_elem_dg2d
      procedure, public :: comp_mass => comp_mass_mat_dg2d
      procedure, public :: comp_u => comp_u_point_dg
-     procedure, public :: comp_flux => comp_flux_interior
+     procedure, public :: comp_flux_interior
      procedure, public :: comp_metric_jacobian => comp_Jstar_point_dg
      procedure, private :: comp_dpsi => comp_d_psi_d_x
      procedure, public :: comp_int_integ => comp_inter_integral
      procedure, public :: xy2rs => xy2rs_dg
      procedure, public :: init_edg_quadrat => init_elem_edg_quadratures
-
+     procedure, public :: comp_Fstar
   end type element_dg2d
+
+  type bc
+
+     character(len = 128) :: name
+     ! one value per tag at this version
+     ! val(1:neqs)
+     real*8, dimension(:), allocatable :: val 
+
+  end type bc
 
   type dg_srtuct
 
      type(grid) :: grd
      type(element_dg2d), dimension(:), allocatable :: elems
+     type(bc), dimension(:), allocatable :: bcs ! zero-based
 
   end type dg_srtuct
 
@@ -608,6 +624,7 @@ contains
        allocate(tneigh%xi(r), tneigh%W(r))
        allocate(tneigh%xloc_in(2, r), tneigh%xloc_out(2, r))
        allocate(tneigh%x(2, r), tneigh%dx(2, r))
+       allocate(tneigh%n(2, r), tneigh%s(r))
        ! alloc/init Fstar(1:neqs, 1:ngpseg) 
        allocate(tneigh%Fstar(elem%neqs, r))
 
@@ -681,6 +698,9 @@ contains
           ! store physical coords and derivatives
           tneigh%x(1,i) = xq; tneigh%x(2,i) = yq
           tneigh%dx(1,i) = xdot; tneigh%dx(2,i) = ydot
+          tneigh%s(i) = sqrt(xdot**2 + ydot**2)
+          tneigh%n(1, i) = ydot / tneigh%s(i)
+          tneigh%n(2, i) = -xdot / tneigh%s(i) 
 
           ! convert physical (xq, yq) to local coords
           ! (r,s) in this element store in this element
@@ -700,5 +720,100 @@ contains
  
     ! done here
   end subroutine init_elem_edg_quadratures
+
+  ! computes the on edge Rankine–Hugoniot value approximated 
+  ! by either a Rieman solver or flux splitting algorithm
+  ! and store it in tneigh%Fstar
+  !
+  subroutine comp_Fstar(elem, wspace, tedg, tneigh)
+    implicit none
+    class(element_dg2d) :: elem
+    class(dg_srtuct) :: wspace ! work space
+    type(edg_dg) :: tedg
+    type(neigh_dg) :: tneigh
+
+    ! local vars
+    integer :: k
+    real*8 :: r, s, nx, ny
+    real*8, dimension(elem%neqs) :: UL, UR, FP, FM
+    logical, dimension(4) :: f_select
+    real*8, dimension(elem%neqs) :: fvl_p, fvl_m
+    real*8, dimension(elem%neqs, elem%neqs) :: d_fvl_p, d_fvl_m
+
+    ! loop over Gauss points per this neighboring segment
+    do k = 1, tneigh%ngpseg
+
+       ! find outgoing unit normals at that gauss points
+       nx = tneigh%n(1, k); ny = tneigh%n(2, k)
+
+       !
+       !          <<< compute UL and UR procedure >>>
+       ! 
+       ! evaluate UL at the current Gauss point using interior (r, s) 
+       ! coordinates and the basis function of this element
+       r = tneigh%xloc_in(1, k); s = tneigh%xloc_in(2, k) 
+       call elem%comp_u(r, s, UL)
+
+       ! now decide on UR ... 
+       select case (wspace%bcs(tedg%tag)%name)
+
+       case ('interior') ! then UR is in the other neighboring element
+
+          ! evaluate UR at the current Gauss point using 
+          ! the neighboring element's local coordinates (r, s)
+          ! and the basis functions of the neighboring element
+          r = tneigh%xloc_out(1, k); s = tneigh%xloc_out(2, k)  
+          call wspace%elems(tneigh%elnum)%comp_u(r, s, UR)
+
+       case ('inflow', 'outflow') ! boundary edge; then UR is preset in bcs value
+
+          UR = wspace%bcs(tedg%tag)%val
+
+       case default
+
+          ! do nothing for now!
+
+       end select
+
+       !        <<< compute Flux procedure >>>
+       ! 
+       !      special situation : Wall treatment
+       if (wspace%bcs(tedg%tag)%name .eq. 'wall') then
+
+          call calc_wall_flux(UL, elem%neqs, elem%gamma, nx, ny, fvl_p, d_fvl_p)
+
+          ! store F+
+          FP = fvl_p
+          FM = 0.0d0
+
+       else
+
+          ! compute F+ using UL
+          f_select = (/ .true. , .false., .false., .false. /)
+          call calc_van_leer(UL, elem%neqs, elem%gamma, nx, ny, f_select &
+               , fvl_p, fvl_m, d_fvl_p, d_fvl_m)
+
+          ! store F+
+          FP = fvl_p
+
+          ! compute F- using UR
+          f_select = (/ .false. , .true., .false., .false. /)
+          call calc_van_leer(UR, elem%neqs, elem%gamma, nx, ny, f_select &
+               , fvl_p, fvl_m, d_fvl_p, d_fvl_m)
+
+          ! store F-
+          FM = fvl_m
+
+       end if
+
+
+       ! store total split flux as the final Rankine–Hugoniot value at Fstar
+       tneigh%Fstar(:, k) = FP + FM
+
+    end do ! next gauss point per neighboring element (on shared segment)
+
+    ! done here
+  end subroutine comp_Fstar
+
 
 end module element_opt_dg2d
