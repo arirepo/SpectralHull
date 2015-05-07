@@ -53,7 +53,8 @@ module trimesher
   end type tri_edges
 
 
-  public :: meshit, trigen, mesh_a_triangle, mesh_a_quadri
+  public :: meshit, trigen, mesh_a_triangle, mesh_a_quadri, add_to_cons
+  public :: trigen_based_TETREX
 
 contains
 
@@ -198,6 +199,9 @@ contains
 
     ! implement ibedgeELEM ??? here
     call bnedge2elem(grd)
+    ! also gather ibedgeELEM in one place called local_edg_bc 
+    call fill_local_edg_bc(grd)
+
     grd%meshFile = 'nofile'
 
     ! add e2e
@@ -734,6 +738,128 @@ contains
 
     ! done here
   end subroutine mesh_a_quadri
+
+  ! creates triangular mesh for a geometry.
+  ! HINT : read from segment file before this! 
+  !
+  ! this adds the interior points from already 
+  ! generated mesh in TETREX format to the current
+  ! segment based connectors and generates a final mesh
+  ! that has nice looking interior points and all
+  ! boundary curve information
+  !
+  subroutine trigen_based_TETREX(tetrexfile, grd)
+    implicit none
+    character(len = *), intent(in) :: tetrexfile
+    type(grid), target, intent(inout) :: grd
+
+    ! local vars
+    integer :: i, j, indx, npts, ncons, ncurves, indx2
+    type(point), dimension(:), allocatable, target :: pts, pts_add
+    type(connector), dimension(:), allocatable :: cons
+    type(point) :: holes(1)
+    real*8, dimension(:), pointer :: x => null(), y => null()
+    logical :: begin
+    type(grid) :: gtmp
+    logical, dimension(:), allocatable :: inter_nodes
+    integer :: ninter
+
+    if (.not. allocated(grd%bn_curves)) then
+       print *, 'first read segments before trigen_based_TETREX! call '&
+            ,' read_segment_file subroutine before this. stop.'
+       stop
+    end if
+
+    ncurves = size(grd%bn_curves)
+    npts = grd%tot_repeated_bn_nodes
+    ncons = grd%tot_bn_seg
+
+    allocate(pts(npts), cons(ncons))
+
+    ! now add the interior points from the nice mesh generated 
+    ! in the tetrex file    
+    call read_grid_TETREX(tetrexfile, gtmp, .true.)
+    ! bullet proofing ...
+    if ( gtmp%nnodesg <= 0 ) then
+       print *, 'something went wrong with TETREX read! stop'
+       stop
+    end if
+
+    ! we only add interior points, so lets filter
+    ! the boundary points first
+    !
+    allocate(inter_nodes(gtmp%nnodesg))
+    inter_nodes = .true. ! all are interior initially 
+    ! but below, we set the bn-nodes to .false.
+    do i = 1, size(gtmp%ibedge, 1)
+       inter_nodes(gtmp%ibedge(i, 1)) = .false.
+       inter_nodes(gtmp%ibedge(i, 2)) = .false.
+    end do
+    ! count the number of trues.
+    ninter = 0
+    do i = 1, gtmp%nnodesg
+       if ( inter_nodes(i) ) then
+          ninter = ninter + 1
+       end if
+    end do
+
+    allocate(pts_add(size(pts) + ninter))
+    indx = size(pts) + 1
+    do j = 1, gtmp%nnodesg
+       if ( inter_nodes(j) ) then
+          pts_add(indx)%x = gtmp%x(j)
+          pts_add(indx)%y = gtmp%y(j)
+          pts_add(indx)%tag = indx
+          indx = indx + 1
+       end if
+    end do
+    ! now add to the points
+    call move_alloc(pts_add, pts)
+
+    indx = 1
+    indx2 = 1
+    do i = 1, ncurves 
+       x => grd%bn_curves(i)%x
+       y => grd%bn_curves(i)%y
+       begin = .true.
+
+       do j = 1, size(x)
+
+          pts(indx)%x = x(j)
+          pts(indx)%y = y(j)
+          pts(indx)%tag = indx
+
+          if (.not. begin) then
+             cons(indx2)%tag = i
+             cons(indx2)%pt1 => pts(indx-1)
+             cons(indx2)%pt2 => pts(indx)   
+             cons(indx2)%is_bn_con = .true.
+             indx2 = indx2 + 1
+          end if
+
+          indx = indx + 1
+          begin = .false.
+
+       end do
+
+    end do
+    
+
+    ! triangulate the fem region
+    holes(1)%tag = -1
+    holes(1)%x = 0.0d0
+    holes(1)%y = 0.0d0
+
+    call meshit('pnjYY', pts, cons, holes, 1, 1, grd)
+
+    ! clean ups
+    if ( allocated(pts) ) deallocate(pts)
+    if ( allocated(pts_add) ) deallocate(pts_add)
+    if ( allocated(cons) ) deallocate(cons)
+    if ( allocated(inter_nodes) ) deallocate(inter_nodes)
+
+    ! done here
+  end subroutine trigen_based_TETREX
 
 end module trimesher
 

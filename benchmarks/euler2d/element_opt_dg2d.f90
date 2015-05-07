@@ -36,6 +36,11 @@ module element_opt_dg2d
 
      ! Riemann flux on the edge stored at Gauss points (1:neqs, 1:ngpseg) 
      real*8, dimension(:, :), allocatable :: Fstar
+
+     ! derivative of split flux dF(+,-)/du on the edge 
+     ! stored at Gauss points (1:neqs, 1:neqs, 1=plus;2=minus, 1:ngpseg) 
+     real*8, dimension(:, :, :, :), allocatable :: dFpm
+
   end type neigh_dg
 
   type edg_dg
@@ -48,22 +53,28 @@ module element_opt_dg2d
      private
      integer, public :: number, npe, elname, p, eltype, npedg, nedgs
      ! (1..2, 1..npe) (1, npe) = x <> (2, npe) = y
-     real*8, dimension(:, :), allocatable :: x !physic. coords
+     real*8, dimension(:, :), allocatable, public :: x !physic. coords
      ! (1..2, 1..npe) (1, npe) = xi <> (2, npe) = eta
      real*8, dimension(:, :), allocatable :: x_loc !local coords
      real*8, public :: gamma
      ! (neqs * npe, neqs * npe)
-     real*8, dimension(:, :), allocatable :: Mass, LUmass
+     real*8, dimension(:, :), allocatable, public :: Mass
+     real*8, dimension(:, :), allocatable, public :: LUmass, LUmass_imp 
      ! the pivot matrix (neqs * npe)
-     integer, dimension(:), allocatable :: IPIVmass
+     integer, dimension(:), allocatable, public :: IPIVmass, IPIVmass_imp
      ! elemental solution : Uij (i=1,neqs <> j=1,npe) 
-     real*8, dimension(:, :), allocatable :: U
+     real*8, dimension(:, :), allocatable, public :: U, Us, rhs, So
      ! physical derivatives of basis functions at Gauss points
      ! (1..npe, 1..ngauss, 1..2)
      real*8, dimension(:, :, :), allocatable :: d_psi_d_x
      ! fluxes evaluated at Gauss points (1..neqs, 1..ngauss, 1..2) 
      real*8, dimension(:, :, :), allocatable :: Fk
      real*8 :: coeff
+     ! pure flux jac. evaluated at Gauss points (1..neqs, 1..neqs, 1..ngauss, 1..2) 
+     real*8, dimension(:, :, :, :), allocatable :: dFk
+
+     ! data struct related to matrix-free iterative procedures 
+     real*8, dimension(:, :), allocatable, public :: U0, Ax
 
      !
      type(edg_dg), dimension(:), allocatable, public :: edgs
@@ -79,6 +90,13 @@ module element_opt_dg2d
      procedure, public :: comp_int_integ => comp_inter_integral
      procedure, public :: xy2rs => xy2rs_dg
      procedure, public :: comp_bnd_integ => comp_bnd_integral
+     procedure, public :: init_elem_U
+     procedure, public :: update_explicit_euler
+     procedure, public :: comp_x => comp_x_point_dg
+     procedure, public :: comp_source => comp_elem_source_term
+     procedure, public :: init_mms => init_elem_mms
+     procedure, public :: comp_pure_flux_jac => comp_pure_flux_jac_interior
+     procedure, public :: comp_int_jac_integ => comp_inter_jac_integral
 
   end type element_dg2d
 
@@ -98,7 +116,7 @@ contains
     real*8, intent(in) :: gamma
 
     ! local vars
-    integer :: npe, ii, jj, edgnum, local_edg, pt1, pt2, last_pt
+    integer :: npe, ii, jj, pt1, pt2, last_pt
     integer :: int1, int2
     integer, dimension(:), allocatable :: pts
 
@@ -143,13 +161,41 @@ contains
           allocate(elem%LUmass(neqs * npe, neqs * npe))
           elem%LUmass = 0.0d0
 
+          if ( allocated(elem%LUmass_imp) ) deallocate(elem%LUmass_imp)       
+          allocate(elem%LUmass_imp(neqs * npe, neqs * npe))
+          elem%LUmass_imp = 0.0d0
+
           if ( allocated(elem%IPIVmass) ) deallocate(elem%IPIVmass)       
           allocate(elem%IPIVmass(neqs * npe))
           elem%IPIVmass = (/ (ii, ii = 1, (neqs * npe) ) /)
 
+          if ( allocated(elem%IPIVmass_imp) ) deallocate(elem%IPIVmass_imp)       
+          allocate(elem%IPIVmass_imp(neqs * npe))
+          elem%IPIVmass_imp = (/ (ii, ii = 1, (neqs * npe) ) /)
+
           if ( allocated(elem%U) ) deallocate(elem%U)
           allocate(elem%U(neqs, npe))
           elem%U = 0.0d0
+
+          if ( allocated(elem%Us) ) deallocate(elem%Us)
+          allocate(elem%Us(neqs, npe))
+          elem%Us = 0.0d0
+
+          if ( allocated(elem%rhs) ) deallocate(elem%rhs)
+          allocate(elem%rhs(neqs, npe))
+          elem%rhs = 0.0d0
+
+          if ( allocated(elem%So) ) deallocate(elem%So)
+          allocate(elem%So(neqs, elem%ngauss))
+          elem%So = 0.0d0
+
+          if ( allocated(elem%U0) ) deallocate(elem%U0)
+          allocate(elem%U0(neqs, npe))
+          elem%U0 = 0.0d0
+
+          if ( allocated(elem%Ax) ) deallocate(elem%Ax)
+          allocate(elem%Ax(neqs, npe))
+          elem%Ax = 0.0d0
 
           if ( allocated(elem%d_psi_d_x) ) deallocate(elem%d_psi_d_x)
           allocate(elem%d_psi_d_x(npe, elem%ngauss, 2))
@@ -159,6 +205,10 @@ contains
           if ( allocated(elem%Fk) ) deallocate(elem%Fk)
           allocate(elem%Fk(neqs, elem%ngauss, 2))
           elem%Fk = 0.0d0
+
+          if ( allocated(elem%dFk) ) deallocate(elem%dFk)
+          allocate(elem%dFk(neqs, neqs, elem%ngauss, 2))
+          elem%dFk = 0.0d0
 
           ! select the coefficient of the Jacobian of the transformation
           select case (elem%elname)
@@ -236,15 +286,23 @@ contains
           end if
 
           ! specify the tag of the edges
-          elem%edgs(:)%tag = 0 ! initially everything is interior edge
-          if ( grd%el2bn(ielem, 1) .ne. 0 ) then ! there is a boundary edge
-             edgnum = grd%el2bn(ielem, 2)
-             local_edg = grd%ibedgeELEM_local_edg(edgnum)
-             elem%edgs(local_edg)%tag =  grd%ibedgeBC(edgnum)
-          end if
+          do ii = 1, size(elem%edgs)
+             elem%edgs(ii)%tag = grd%local_edg_bc(elem%number, ii)
+          end do
+
+          ! ! specify the tag of the edges
+          ! elem%edgs(:)%tag = 0 ! initially everything is interior edge
+          ! if ( grd%el2bn(ielem, 1) .ne. 0 ) then ! there is a boundary edge
+          !    edgnum = grd%el2bn(ielem, 2)
+          !    local_edg = grd%ibedgeELEM_local_edg(edgnum)
+          !    elem%edgs(local_edg)%tag =  grd%ibedgeBC(edgnum)
+          ! end if
 
           ! compute and store mass matrix and its LU info
           call elem%comp_mass()
+
+          ! compute source term for MMS
+          call elem%comp_source()
 
        class default
 
@@ -352,7 +410,6 @@ contains
     integer :: k
     real*8, dimension(elem%neqs) :: Uk
 
-
     do k = 1, elem%ngauss
 
        ! evaluate U at the current Gauss point 
@@ -452,6 +509,7 @@ contains
           der = matmul(elem%Jstar(:,:,k), der)
           ! store
           ! (1..elem%npe, 1..ngauss, 1..2)
+! if (elem%number .eq. 3) print *, 'i = ', i, 'derder = ', der
           elem%d_psi_d_x(i, k, :) = der
        end do
     end do
@@ -479,6 +537,13 @@ contains
                   + elem%d_psi_d_x(i, k, idim) * elem%Fk(:,k, idim) &
                   * elem%coeff * elem%JJ(k) * elem%W(k)
           end do
+!           ! add MMS
+!           integ(:, i) = integ(:, i) &
+!                + elem%psi(i, k) * elem%So(:,k) &
+!                * elem%coeff * elem%JJ(k) * elem%W(k)
+! if ( all (elem%edgs(:)%tag .eq. 0) ) then
+! print *, 'mms ', elem%number, elem%coeff, elem%JJ(k), elem%W(k), elem%ngauss
+! end if
        end do
     end do
 
@@ -596,12 +661,229 @@ contains
        do i = 1, elem%npe
           integ(:, i) = integ(:, i) &
                + tneigh%psi_in(i, k) * tneigh%Fstar(:, k) &
-               * tneigh%s(k) * tneigh%W(k) 
+               * tneigh%s(k) * tneigh%W(k)
        end do
+
+! if (elem%number .eq. 3) then
+!    print *, 'tneigh%s(k) = ', tneigh%s(k), 'tneigh%W(k)=', tneigh%W(k) &
+!         , 'elem', elem%number, 'xs=', tneigh%xs, 'xe=', tneigh%xe &
+!         , 'tneigh%ngpseg = ', tneigh%ngpseg, 'tneigh%n(:,k)=' &
+!         , tneigh%n(:,k), 'tneigh%elnum = ', tneigh%elnum &
+!         , 'xloc_in = ', tneigh%xloc_in, 'xloc_out = ', tneigh%xloc_out 
+! end if
 
     end do ! next gauss point per neighbor segment
 
     ! done here
   end subroutine comp_bnd_integral
+
+  ! initializes the element's conservative vars elem%U
+  ! with the given constant primitive vars
+  subroutine init_elem_U(elem, rho, u, v, P)
+    implicit none
+    class(element_dg2d), intent(inout) :: elem
+    real*8, intent(in) :: rho, u, v, P
+
+    ! local vars
+    integer :: i
+
+    do i = 1, elem%npe
+
+       ! u2U(rho, u, v, P, gamma, UU)
+       call u2U(rho, u, v, P, elem%gamma, elem%U(:, i))
+
+    end do
+
+    ! done here
+  end subroutine init_elem_U
+
+  ! updates the conservative solution vector
+  ! i.e. elem%U by LU solve of mass matrix on the
+  ! given residual  
+  subroutine update_explicit_euler(elem, rhs, dt)
+    implicit none
+    class(element_dg2d), intent(inout) :: elem
+    real*8, dimension(:, :), intent(in) :: rhs
+    real*8, intent(in) :: dt
+
+    ! local vars
+    integer :: N, INFO
+    real*8, dimension(:, :), allocatable :: rhs_lapack, rhs_new
+
+    ! init
+    N = elem%neqs * elem%npe
+    allocate(rhs_lapack(N, 1))
+    allocate(rhs_new(elem%neqs, elem%npe))
+
+    ! solve using already stored LU
+    rhs_lapack = reshape(rhs, (/ N, 1 /) )
+
+    CALL DGETRS( 'No transpose', N, 1, elem%LUmass &
+         , N, elem%IPIVmass, rhs_lapack, N, INFO )
+
+    if ( INFO .ne. 0) then
+       print *, 'something is wrong in LU solve in explicit euler update! stop'
+       stop
+    end if
+
+    rhs_new = reshape( rhs_lapack, (/ elem%neqs, elem%npe /))
+
+    ! update
+    elem%U = elem%U + dt * rhs_new   
+
+    ! clean ups
+    deallocate(rhs_lapack, rhs_new)
+
+    ! done here
+  end subroutine update_explicit_euler
+
+  ! evaluates coords x at a local point (r, s)
+  ! in this discontinious element
+  subroutine comp_x_point_dg(elem, r, s, x)
+    implicit none
+    class(element_dg2d), intent(inout) :: elem
+    real*8, intent(in) :: r, s
+    real*8, dimension(:), intent(out) :: x
+
+    ! local vars
+    integer :: k
+    real*8, dimension(elem%npe) :: psi
+
+    ! hard reset
+    x = 0.0d0
+
+    ! eval basis funcs at point (r, s)
+    call elem%tbasis%eval(r, s, 0, psi)
+
+    ! find x ...
+    do k = 1, elem%npe
+       x = x + elem%x(:,k) * psi(k)
+    end do
+
+    ! done here
+  end subroutine comp_x_point_dg
+
+  ! computes element's sorce term for MMS
+  !
+  subroutine comp_elem_source_term(elem)
+    implicit none
+    class(element_dg2d), intent(inout) :: elem
+
+    ! local vars
+    integer :: k
+    real*8, dimension(2) :: xx
+    real*8 :: x, y
+
+    do k = 1, elem%ngauss
+
+       call elem%comp_x(elem%r(k), elem%s(k), xx)
+       x = xx(1); y = xx(2)
+
+if (elem%number .eq. 4) print *, 'xso = ', x, 'yso = ', y 
+       elem%So(1, k) =  x ** 2 + 2.0d0 * x * y + 1.0d0
+
+       elem%So(2, k) = x ** 3 + 2.0d0 * x ** 2 * y + 2.0d0 * x * y ** 2 + x + 2.0d0 * y
+
+       elem%So(3, k) = 2.0d0 * x ** 3 + 5.0d0 * x ** 2 * y + 2.0d0 * x * y ** 2 + 2.0d0 * x + 5.0d0 * y
+
+       elem%So(4, k) = dble((3.0d0 * elem%gamma * x ** 4 + 12.0d0 * elem%gamma * x ** 3 * y + 12.0d0 *& 
+     elem%gamma * x ** 2 * y ** 2 + 4.0d0 * elem%gamma * x * y ** 3 - 3.0d0 * x ** 4 - &
+     12.0d0 * x ** 3 * y - 12.0d0 * x ** 2 * y ** 2 - 4.0d0 * x * y ** 3 + 3.0d0 * elem%gamma * &
+     x ** 2 + 14.0d0 * elem%gamma * x * y + 14.0d0 * y ** 2 * elem%gamma - 3.0d0 * x ** 2 &
+     - 10.0d0 * x * y - 8.0d0 * y ** 2 + 2.0d0 * elem%gamma) / (elem%gamma - 1.0d0)) / 0.2D1
+
+    end do
+
+    ! done here
+  end subroutine comp_elem_source_term
+
+  !
+  ! method of manufacturing
+  !
+  subroutine init_elem_mms(elem)
+    implicit none
+    class(element_dg2d), intent(inout) :: elem
+
+    ! local vars
+    integer :: i
+    real*8 :: rho, u, v, P, x, y
+
+    do i = 1, elem%npe
+
+       x = elem%x(1, i)
+       y = elem%x(2, i)
+
+       rho = 1.0d0 + x**2  
+       u = y
+       v = x+y
+       P = 1.0d0 + y**2
+
+       ! u2U(rho, u, v, P, gamma, UU)
+       call u2U(rho, u, v, P, elem%gamma, elem%U(:, i))
+
+    end do
+
+    ! done here
+  end subroutine init_elem_mms
+
+  ! evaluates the pure flux jac. at gauss points
+  ! and store them in elem%dFk
+  subroutine comp_pure_flux_jac_interior(elem)
+    implicit none
+    class(element_dg2d), intent(inout) :: elem
+
+    ! local vars
+    integer :: k
+    real*8, dimension(elem%neqs) :: Uk
+
+    do k = 1, elem%ngauss
+
+       ! evaluate U at the current Gauss point 
+       call elem%comp_u(elem%r(k), elem%s(k), Uk)
+
+       ! evaluate pure flux jac. and store them
+       call calc_pure_euler2d_flux(Q = Uk, gamma = elem%gamma &
+            , F = elem%Fk(:,k, 1), G = elem%Fk(:,k, 2))
+
+       call calc_pure_euler2d_flux_jac(Q = Uk, gamma = elem%gamma &
+            , dF = elem%dFk(:, :, k, 1), dG = elem%dFk(:, :, k, 2))
+
+    end do
+
+    ! done here
+  end subroutine comp_pure_flux_jac_interior
+
+  ! computes int_Omega(w,j dFij/du * Xu dOmega) in the interior 
+  ! of the DG element.
+  subroutine comp_inter_jac_integral(elem, integ)
+    implicit none
+    class(element_dg2d) :: elem
+    real*8, dimension(:,:), intent(out) :: integ 
+
+    ! local vars
+    integer :: i, k, idim
+    real*8, dimension(elem%neqs) :: Xu
+
+    ! HARD reset
+    integ = 0.0d0
+
+    
+    do k = 1, elem%ngauss
+
+       ! evaluate U at the current Gauss point
+       ! at the current Arnoldi iteration 
+       call elem%comp_u(elem%r(k), elem%s(k), Xu)
+
+       do i = 1, elem%npe
+          do idim = 1, 2 !2d case
+             integ(:, i) = integ(:, i) &
+                  + elem%d_psi_d_x(i, k, idim) * matmul(elem%dFk(:,:,k, idim), Xu) &
+                  * elem%coeff * elem%JJ(k) * elem%W(k)
+          end do
+       end do
+    end do
+
+    ! done here
+  end subroutine comp_inter_jac_integral
 
 end module element_opt_dg2d

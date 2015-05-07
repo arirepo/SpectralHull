@@ -66,6 +66,9 @@ module grid_opt
 
      type(fekete_table) :: tfekete_table ! generic fekete points and quadratures
 
+     ! (1:ncellsg, 1:4) includes tri and quad simultanously!
+     integer, dimension(:, :), allocatable :: local_edg_bc
+
   end type grid
 
   ! enumerate types for element names grd%elname
@@ -85,6 +88,7 @@ module grid_opt
   public :: scatter_tecplot
   public :: fill_ibedgeELEM_local_edg
   public :: find_dup_nodes, find_t
+  public :: fill_local_edg_bc
 
 contains
 
@@ -92,10 +96,11 @@ contains
   ! the CAD grid written in TETREX format. The grid should be 2D 
   ! and should be either triangle or quad.
   
-  subroutine read_grid_TETREX(in_grd, grd)
+  subroutine read_grid_TETREX(in_grd, grd, noe2e)
     implicit none
     character(len=*), intent(in)      :: in_grd
     type(grid), intent(inout) :: grd
+    logical, intent(in), optional :: noe2e
 
 
     ! local vars
@@ -247,7 +252,15 @@ contains
     close(10)
 
     ! create e2e map
-    call create_e2e(grd)
+    if ( present(noe2e) ) then
+       if ( noe2e ) then
+          ! do nothing !
+       else
+          call create_e2e(grd)
+       end if
+    else
+       call create_e2e(grd)
+    end if
 
     ! done here
   end subroutine read_grid_TETREX
@@ -1330,17 +1343,27 @@ end select
 
 end do
 
-if (grd%galtype .eq. 'PG') then
-    ! fix the e2e map if any changes is made 
-    ! in "transform_elem" in the winding of the
-    ! physical elements
-    deallocate(grd%e2e) 
-    call create_e2e(grd)
+! update e2e map for both PG and DG methods 
+! based on coordinate searching
+call create_e2e_based_physical_coords(grd)
+! refill ibedgeELEM_local_edg
+call fill_ibedgeELEM_local_edg_coords(grd)
 
-    ! refill ibedgeELEM_local_edg
-    call fill_ibedgeELEM_local_edg(grd)
+! gather local edge info in one place suitable for 
+! DG grid processor and solvers
+call fill_local_edg_bc(grd)
 
-end if
+! if (grd%galtype .eq. 'PG') then
+!     ! fix the e2e map if any changes is made 
+!     ! in "transform_elem" in the winding of the
+!     ! physical elements
+!     ! deallocate(grd%e2e) 
+!     ! call create_e2e(grd)
+
+!     ! refill ibedgeELEM_local_edg
+!     ! call fill_ibedgeELEM_local_edg(grd)
+
+! end if
 
 
     ! done here
@@ -1676,10 +1699,11 @@ end if
              exit
           end if
        end do
-    end if
 
-    ! changing physical elem winding to match with master elem
-    if( pt3 .ne. grd%icon(elem, 3) ) then
+       ! update local edge number in that element
+       ! NOW IT IS ALWAYS 1
+       grd%ibedgeELEM_local_edg(edgnum) = 1
+       ! changing physical elem winding to match with master elem
        grd%icon(elem, 1) = pt1
        grd%icon(elem, 2) = pt2
        grd%icon(elem, 3) = pt3
@@ -1855,6 +1879,11 @@ t2 = dble(nint(t2))
     ! updating physical elem winding to match with master elem
     if( any(pt .ne. grd%icon(elem, 1:4)) ) then
        grd%icon(elem, 1:4) = pt
+
+       ! update local edge number in that element
+       ! NOW IT IS ALWAYS 1
+       grd%ibedgeELEM_local_edg(edgnum) = 1
+
     end if
 
     ! find coordinates
@@ -2331,5 +2360,257 @@ t2 = dble(nint(t2))
 
     ! done here
   end subroutine find_dup_nodes
+
+  ! manually creates e2e map based on physical 
+  ! coordinates of the points on the edges
+  ! 
+  ! must be used when grid is read from CAD software
+  ! specially in DG grids where points are NOT repeated
+  ! in the neighboring elements
+  !
+  subroutine create_e2e_based_physical_coords(grd)
+    implicit none
+    type(grid), intent(inout) :: grd
+
+    ! local vars
+    integer :: i, pt1, pt2
+
+    ! allocate
+    if ( allocated(grd%e2e) ) then
+       print *, 'warning : e2e in fem-grid is already initialized!'
+       deallocate(grd%e2e)
+    end if
+
+    if (grd%nquad4 .eq. 0 ) then !only tri, old way!
+       allocate(grd%e2e(grd%ncellsg, 3))
+    else
+       allocate(grd%e2e(grd%ncellsg, 4))
+    end if
+
+    ! create e2e map
+    do i = 1, size(grd%icon,1) ! loop over all cells
+
+select case (grd%elname(i))
+case (GEN_TRIANGLE) 
+
+       ! neigh 1
+       pt1 = grd%icon(i,2); pt2 = grd%icon(i,3)
+       grd%e2e(i,1) = find_elem_cont_pts_coords(grd, i, pt1, pt2)
+
+       ! neigh 2
+       pt1 = grd%icon(i,3); pt2 = grd%icon(i,1)
+       grd%e2e(i,2) = find_elem_cont_pts_coords(grd, i, pt1, pt2)
+
+       ! neigh 3
+       pt1 = grd%icon(i,1); pt2 = grd%icon(i,2)
+       grd%e2e(i,3) = find_elem_cont_pts_coords(grd, i, pt1, pt2)
+
+case (GEN_QUADRI)
+
+       ! neigh 1
+       pt1 = grd%icon(i,2); pt2 = grd%icon(i,3)
+       grd%e2e(i,1) = find_elem_cont_pts_coords(grd, i, pt1, pt2)
+
+       ! neigh 2
+       pt1 = grd%icon(i,3); pt2 = grd%icon(i,4)
+       grd%e2e(i,2) = find_elem_cont_pts_coords(grd, i, pt1, pt2)
+
+       ! neigh 3
+       pt1 = grd%icon(i,4); pt2 = grd%icon(i,1)
+       grd%e2e(i,3) = find_elem_cont_pts_coords(grd, i, pt1, pt2)
+
+       ! neigh 4
+       pt1 = grd%icon(i,1); pt2 = grd%icon(i,2)
+       grd%e2e(i,4) = find_elem_cont_pts_coords(grd, i, pt1, pt2)
+
+end select
+
+    end do
+
+    ! done here
+
+  contains 
+
+    function find_elem_cont_pts_coords(grd, elem, pt1, pt2)
+      implicit none
+      type(grid), intent(in), target :: grd
+      integer, intent(in) :: elem, pt1, pt2
+      integer :: find_elem_cont_pts_coords
+
+      ! local vars
+      integer :: i, j, ptj
+      logical :: pt1_found, pt2_found
+      integer, dimension(:,:), pointer :: icon => null()
+      real*8 :: x1, y1, x2, y2, xj, yj
+
+      ! init
+      icon => grd%icon
+x1 = grd%x(pt1)
+y1 = grd%y(pt1)
+x2 = grd%x(pt2)
+y2 = grd%y(pt2)
+ 
+      do i = 1, size(icon,1) 
+         if ( i .eq. elem) cycle
+
+         pt1_found = .false.; pt2_found = .false.
+         do j = 1, size(icon,2)
+            ptj = icon(i,j)
+            if ( ptj <= 0 ) exit ! tail of connectivity!
+xj = grd%x(ptj)
+yj = grd%y(ptj)
+ 
+            if ( sqrt( (x1 - xj)**2 + (y1 - yj)**2 ) <= 1.0d-14 ) pt1_found = .true.
+            if ( sqrt( (x2 - xj)**2 + (y2 - yj)**2 ) <= 1.0d-14 ) pt2_found = .true.
+         end do
+
+         if ( pt1_found .and. pt2_found ) then
+            find_elem_cont_pts_coords = i
+            return
+         end if
+
+      end do
+
+      ! not found yet? that's wall man!
+      find_elem_cont_pts_coords = -1 ! wall :(
+
+      ! done gere
+    end function find_elem_cont_pts_coords
+
+  end subroutine create_e2e_based_physical_coords
+
+  ! 
+  subroutine fill_ibedgeELEM_local_edg_coords(grd)
+    implicit none
+    type(grid), intent(inout) :: grd
+
+    ! local vars
+    integer :: i, pt1, pt2, ielem
+    integer :: ps1, ps2, ps3, ps4
+    real*8 :: x1(2), x2(2), xs1(2), xs2(2), xs3(2), xs4(2)
+
+    ! bulletproofing
+    if ( .not. allocated(grd%ibedgeELEM_local_edg) ) then
+       print *, 'fatal: grd%ibedgeELEM_local_edg must be first allocated! stop'
+       stop
+    end if
+
+    ! search all the edges to find local edg number
+    do i = 1, grd%nbedgeg
+
+       pt1 = grd%ibedge(i, 1)
+       x1 = (/ grd%x(pt1), grd%y(pt1) /)
+ 
+       pt2 = grd%ibedge(i, 2)
+       x2 = (/ grd%x(pt2), grd%y(pt2) /)
+
+       ielem = grd%ibedgeELEM(i)
+
+       ps1 = grd%icon(ielem, 1)
+       xs1 = (/ grd%x(ps1), grd%y(ps1) /)
+
+       ps2 = grd%icon(ielem, 2)
+       xs2 = (/ grd%x(ps2), grd%y(ps2) /)
+
+       ps3 = grd%icon(ielem, 3)
+       xs3 = (/ grd%x(ps3), grd%y(ps3) /)
+
+       if ( grd%elname(ielem) .eq. GEN_QUADRI) then
+          ps4 = grd%icon(ielem, 4)
+          xs4 = (/ grd%x(ps4), grd%y(ps4) /)
+       end if
+
+       select case ( grd%elname(ielem) )
+
+       case ( GEN_TRIANGLE )
+          if     (  is_close(x1, xs1) .and. &
+               is_close(x2, xs2) ) then
+             grd%ibedgeELEM_local_edg(i) = 1
+
+          elseif (  is_close(x1, xs2) .and. &
+               is_close(x2, xs3) ) then
+             grd%ibedgeELEM_local_edg(i) = 2
+
+          elseif (  is_close(x1, xs3) .and. &
+               is_close(x2, xs1) ) then
+             grd%ibedgeELEM_local_edg(i) = 3
+
+          else
+             print *, 'fatal : the edge with nodes x1= [' &
+                  , x1, '] and x2 = [', x2 , '] does not match any edges' &
+                  , ' in tri element #', ielem,'. stop'
+             stop
+
+          end if
+       case ( GEN_QUADRI )
+          if     (  is_close(x1, xs1) .and. &
+               is_close(x2, xs2) ) then
+             grd%ibedgeELEM_local_edg(i) = 1
+
+          elseif (  is_close(x1, xs2) .and. &
+               is_close(x2, xs3) ) then
+             grd%ibedgeELEM_local_edg(i) = 2
+
+          elseif (  is_close(x1, xs3) .and. &
+               is_close(x2, xs4) ) then
+             grd%ibedgeELEM_local_edg(i) = 3
+
+          elseif (  is_close(x1, xs4) .and. &
+               is_close(x2, xs1) ) then
+             grd%ibedgeELEM_local_edg(i) = 4
+
+          else
+             print *, 'fatal : the edge with nodes x1= [' &
+                  , x1, '] and x2 = [', x2 , '] does not match any edges' &
+                  , ' in quad element #', ielem,'. stop'
+             stop
+
+          end if
+
+       end select
+
+    end do
+
+    ! done here
+  contains
+
+    function is_close(x1, x2)
+      implicit none
+      real*8, dimension(:), intent(in) :: x1, x2
+      logical :: is_close
+
+      is_close = ( sqrt( sum( (x1 - x2)**2 ) ) <= 1.0d-14 )
+
+      ! done here
+    end function is_close
+
+  end subroutine fill_ibedgeELEM_local_edg_coords
+
+  subroutine fill_local_edg_bc(grd)
+    implicit none
+    type(grid), intent(inout) :: grd
+
+    ! local vars
+    integer :: i, ielem, loc_num, bctag
+
+    ! bullet proofing 
+    if ( allocated(grd%local_edg_bc) ) deallocate(grd%local_edg_bc)
+    allocate(grd%local_edg_bc(grd%ncellsg, 4))
+    grd%local_edg_bc = 0 ! initially all edges are interior 
+
+    do i = 1, size(grd%ibedge, 1) ! all boundary edges available
+
+       ! ibedge(:,:),ibedgeBC(:), ibedgeELEM(:), ibedgeELEM_local_edg(:)
+       ielem = grd%ibedgeELEM(i)
+       loc_num = grd%ibedgeELEM_local_edg(i)
+       bctag = grd%ibedgeBC(i)
+
+       ! store info
+       grd%local_edg_bc(ielem, loc_num) = bctag  
+
+    end do
+
+    ! done here
+  end subroutine fill_local_edg_bc
 
 end module grid_opt

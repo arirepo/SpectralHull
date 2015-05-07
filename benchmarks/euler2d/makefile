@@ -20,13 +20,15 @@ CC = cc
 # CC = icc
 ##F90 = gfortran
 # F90 = ifort
-COMMONFLAGS  =  -O3 -fbounds-check -Wall -Wconversion -Wunderflow -L $(LIBS) -I $(INCS)
-# COMMONFLAGS  =  -O1 -L $(LIBS) -I $(INCS)
+COMMONFLAGS  =  -fbounds-check -Wall -Wconversion -Wunderflow -L $(LIBS) -I $(INCS)
+# COMMONFLAGS  =  -O3 -L $(LIBS) -I $(INCS)
 # COMMONFLAGS  = -O3
+# COMMONFLAGS  = 
 CCOMPILEFLAGS  =  -c 
 ##COMMONFLAGS  = 
 ##COMMONFLAGS  =  -O3 -check all 
-#COMMONFLAGS  =  -O3 -parallel  
+# COMMONFLAGS  =  -O3 -parallel  
+# COMMONFLAGS  =  -O3 -xHost -ipo
 COMPFLAGS    =  -c  $(COMMONFLAGS)
 LIBS    = 
 INCS    = 
@@ -37,7 +39,7 @@ LINK_SUFFIX  =     -llapack -lblas
 #          your test case problem. 
 
 ### objects
-OBJ = euler2d_eqs.o triangle.o custom_Tri_wrapper.o condition.o fekete.o ncc_triangle.o globals.o nurbs.o spline.o splib.o ortho_poly.o fem_reordering.o quadri_elem.o approx_fekete.o grid_opt.o lag_basis.o fem_utils.o dunavant.o gen_basis.o element_opt.o element_opt_dg2d.o dg_workspace.o bn_integral.o bcs.o spem_2d.o interp.o ps.o trimesher.o plot_curved_elems.o  tester.o   
+OBJ = euler2d_eqs.o triangle.o custom_Tri_wrapper.o condition.o fekete.o ncc_triangle.o globals.o nurbs.o spline.o splib.o ortho_poly.o fem_reordering.o quadri_elem.o approx_fekete.o grid_opt.o lag_basis.o fem_utils.o dunavant.o gen_basis.o element_opt.o element_opt_dg2d.o dg_workspace.o bn_integral.o bcs.o spem_2d.o interp.o ps.o trimesher.o plot_curved_elems.o plot_curved_elems_dg.o tester.o   
 ###
 
 ### compile and link

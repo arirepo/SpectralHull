@@ -5,6 +5,7 @@ module euler2d_eqs
 
 
   public :: calc_van_leer, calc_wall_flux, calc_pure_euler2d_flux
+  public :: u2U, calc_pure_euler2d_flux_jac
 
 contains
 
@@ -308,6 +309,88 @@ contains
 
     ! done here
   end subroutine calc_pure_euler2d_flux
+
+  subroutine u2U(rho, u, v, P, gamma, UU)
+    implicit none
+    ! primitive vars
+    real*8, intent(in) :: rho, u, v, P, gamma
+    ! conservative vars
+    real*8, dimension(:), intent(out) :: UU
+
+    UU(1) = rho
+    UU(2) = rho * u
+    UU(3) = rho * v
+    UU(4) = P / (gamma - 1.0d0)  + 0.5d0 * rho * (u**2 + v**2) 
+
+    ! done here
+  end subroutine u2U
+
+  subroutine calc_pure_euler2d_flux_jac(Q, gamma, dF, dG)
+    implicit none
+    real*8, dimension(:), intent(in) :: Q
+    real*8, intent(in) :: gamma
+    real*8, dimension(:, :), intent(out) :: dF, dG
+
+    ! local vars
+    real*8 :: rho, u, v, e, zeta, u2
+
+    ! calculating primitive variables
+    rho = Q(1)
+    u = Q(2) / Q(1)
+    v = Q(3) / Q(1)
+    e = Q(4)
+
+    ! computing repeated factors
+    u2 = u**2 + v**2
+    zeta = (gamma - 1.0d0) * u2 - e * gamma / rho
+
+    ! computing pure flux Jacobian dF/dQ
+    dF(1, 1) = 0.0d0
+    dF(1, 2) = 1.0d0
+    dF(1, 3) = 0.0d0
+    dF(1, 4) = 0.0d0
+
+    dF(2, 1) = -1.0d0 * (u**2) + 0.5d0 * (gamma - 1.0d0) * u2
+    dF(2, 2) = (3.0d0 - gamma) * u
+    dF(2, 3) = (1.0d0 - gamma) * v
+    dF(2, 4) = gamma - 1.0d0
+
+
+    dF(3, 1) = -1.0d0 * u * v
+    dF(3, 2) = v
+    dF(3, 3) = u
+    dF(3, 4) = 0.0d0
+
+    dF(4, 1) = zeta * u
+    dF(4, 2) = gamma * e / rho + 0.5d0 * (1.0d0 - gamma) * u2 &
+         + (1.0d0 - gamma) * (u**2)
+    dF(4, 3) = (1.0d0 - gamma) * u * v
+    dF(4, 4) = gamma * u
+
+    ! computing pure flux Jacobian dG/dQ
+    dG(1, 1) = 0.0d0
+    dG(1, 2) = 0.0d0
+    dG(1, 3) = 1.0d0
+    dG(1, 4) = 0.0d0
+
+    dG(2, 1) = -1.0d0 * u * v
+    dG(2, 2) = v
+    dG(2, 3) = u
+    dG(2, 4) = 0.0d0
+
+    dG(3, 1) = -1.0d0 * (v**2) + 0.5d0 * (gamma - 1.0d0) * u2
+    dG(3, 2) = (1.0d0 - gamma) * u
+    dG(3, 3) = (3.0d0 - gamma) * v
+    dG(3, 4) = gamma - 1.0d0
+
+    dG(4, 1) = zeta * v
+    dG(4, 2) = (1.0d0 - gamma) * u * v
+    dG(4, 3) = gamma * e / rho + 0.5d0 * (1.0d0 - gamma) * u2 &
+         + (1.0d0 - gamma) * (v**2)
+    dG(4, 4) = gamma * v
+
+    ! done here
+  end subroutine calc_pure_euler2d_flux_jac
 
 end module euler2d_eqs
 
