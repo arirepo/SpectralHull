@@ -1256,7 +1256,8 @@ print *, 'itr = ', itr
     class(dg_wspace), target :: wspace
 
     ! local vars
-    integer :: ielem
+    integer :: ielem, k, m, l, q, i, j, ii, qq
+    real*8 :: tmp
     class(element_dg2d), pointer :: elem => null()
 
     ! LAPACK LU temp. vars
@@ -1273,10 +1274,32 @@ print *, 'itr = ', itr
        elem%LUmass_imp = 1.0d0 / wspace%dt * elem%Mass
 
        ! then add contributions from interior and boundary here ...
+       ! 1- contribution from interior integral of pure Jacobian matrix
+       do k = 1, elem%ngauss
+          do m = 1, elem%npe
+             do l = 1, elem%npe
+                do q = 1, elem%neqs
+                   do i = 1, elem%neqs
 
+                      ! comp temp val
+                      tmp = 0.0d0
 
+                      do j = 1, 2 !ndim
+                         tmp = tmp - elem%d_psi_d_x(l, k, j) * elem%dFk(i,q,k, j) &
+                              * elem%psi(m, k) &
+                              * elem%coeff * elem%JJ(k) * elem%W(k)
+                      end do
 
+                      ! add it to correct location to diagonal matrix
+                      ii = (l-1) * elem%neqs + i
+                      qq = (m-1) * elem%neqs + q
+                      elem%LUmass_imp(ii, qq) = elem%LUmass_imp(ii, qq) + tmp
 
+                   end do
+                end do
+             end do
+          end do
+       end do
 
        ! finally
        ! compute and store LU of the mass matrix of implicit formulation

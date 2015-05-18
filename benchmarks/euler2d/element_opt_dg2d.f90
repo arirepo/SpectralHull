@@ -66,12 +66,12 @@ module element_opt_dg2d
      real*8, dimension(:, :), allocatable, public :: U, Us, rhs, So
      ! physical derivatives of basis functions at Gauss points
      ! (1..npe, 1..ngauss, 1..2)
-     real*8, dimension(:, :, :), allocatable :: d_psi_d_x
+     real*8, dimension(:, :, :), allocatable, public :: d_psi_d_x
      ! fluxes evaluated at Gauss points (1..neqs, 1..ngauss, 1..2) 
      real*8, dimension(:, :, :), allocatable :: Fk
-     real*8 :: coeff
+     real*8, public :: coeff
      ! pure flux jac. evaluated at Gauss points (1..neqs, 1..neqs, 1..ngauss, 1..2) 
-     real*8, dimension(:, :, :, :), allocatable :: dFk
+     real*8, dimension(:, :, :, :), allocatable, public :: dFk
 
      ! data struct related to matrix-free iterative procedures 
      real*8, dimension(:, :), allocatable, public :: U0, Ax

@@ -14,8 +14,8 @@ VPATH = ./:../../src:
 ## NOTE!!! Now select your compiler from below 
 ### compiler
 # F90 = /usr/bin/gfortran
-F90 = /opt/gcc/bin/gfortran
-# F90 = /home/aghasemi/gcc-trunk/bin/gfortran
+# F90 = /opt/gcc/bin/gfortran
+F90 = /home/aghasemi/gcc-trunk/bin/gfortran
 CC = cc
 # CC = icc
 ##F90 = gfortran
