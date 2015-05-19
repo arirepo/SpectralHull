@@ -1257,8 +1257,11 @@ print *, 'itr = ', itr
 
     ! local vars
     integer :: ielem, k, m, l, q, i, j, ii, qq
+    integer :: iedg, ineigh
     real*8 :: tmp
     class(element_dg2d), pointer :: elem => null()
+    class(edg_dg), pointer :: tedg => null()
+    class(neigh_dg), pointer :: tneigh => null()
 
     ! LAPACK LU temp. vars
     integer :: LDA, INFO
@@ -1300,6 +1303,46 @@ print *, 'itr = ', itr
              end do
           end do
        end do
+
+       ! 2- add contributions due boundary integral of split
+       !    jacobians
+       do iedg = 1, elem%nedgs ! loop over edges
+
+          tedg => elem%edgs(iedg) !pick this edge
+
+          do ineigh = 1, size(tedg%neighs) ! loop over neigh segments on that edge
+
+             tneigh => tedg%neighs(ineigh) ! pick this neighboring segment
+
+             ! loop over Gauss points per this neighboring segment
+             do k = 1, tneigh%ngpseg
+
+                ! add to boundary integral matrix
+                do m = 1, elem%npe
+                   do l = 1, elem%npe
+                      do q = 1, elem%neqs
+                         do i = 1, elem%neqs
+                            ! find loc in the maxx matrix
+                            ii = (l-1) * elem%neqs + i
+                            qq = (m-1) * elem%neqs + q
+                            ! compute the entry
+                            elem%LUmass_imp(ii, qq) = elem%LUmass_imp(ii, qq) &
+                                 + tneigh%psi_in(l, k) * tneigh%dFpm(i, q, 1, k) &
+                                 * tneigh%psi_in(m, k) * tneigh%s(k) * tneigh%W(k)
+                         end do
+                      end do
+                   end do
+                end do
+
+             end do ! next gauss point per neighboring element (on shared segment)
+
+          end do !segments per that edge
+
+       end do ! edges per that element
+
+
+
+
 
        ! finally
        ! compute and store LU of the mass matrix of implicit formulation
