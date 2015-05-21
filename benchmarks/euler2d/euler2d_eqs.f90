@@ -6,6 +6,7 @@ module euler2d_eqs
 
   public :: calc_van_leer, calc_wall_flux, calc_pure_euler2d_flux
   public :: u2U, calc_pure_euler2d_flux_jac
+  public :: calc_Fv
 
 contains
 
@@ -391,6 +392,37 @@ contains
 
     ! done here
   end subroutine calc_pure_euler2d_flux_jac
+
+  ! calculates viscous fluxes as given in Bassi and Rebay paper
+  ! jcp 131, 267-279
+  !
+  ! here Fv(:,1) = fv, Fv(:, 2) = gv where fv and gv are viscous
+  ! fluxes with notation given in that paper
+  !
+  subroutine calc_Fv(mu, lambda, gamma, Pr, u, v, ux, uy, vx, vy, eex, eey, Fv)
+    implicit none
+    real*8, intent(in) :: mu, lambda, gamma, Pr
+    real*8, intent(in) :: u, v, ux, uy, vx, vy, eex, eey
+    real*8, dimension(:, :), intent(out) :: Fv
+
+    ! computing Fv(:, 1) = fv
+    Fv(1, 1) = 0.0d0
+    Fv(2, 1) = 2.0d0 * ux + lambda * (ux + vy)
+    Fv(3, 1) = vx + uy
+    Fv(4, 1) = u * (2.0d0 * ux + lambda * (ux + vy)) + v * (vx + uy) + (gamma/Pr) * eex
+    Fv(:, 1) = mu * Fv(:, 1) ! scale by viscosity
+    Fv(1, 1) = 0.0d0 ! double force to zero
+
+    ! computing Fv(:, 2) = gv
+    Fv(1, 2) = 0.0d0
+    Fv(2, 2) = vx + uy
+    Fv(3, 2) = 2.0d0 * vx + lambda * (ux + vy)
+    Fv(4, 2) = u * (vx + uy) + v * (2.0d0 * vy + lambda * (ux + vy)) + (gamma/Pr) * eey
+    Fv(:, 2) = mu * Fv(:, 2) ! scale by viscosity
+    Fv(1, 2) = 0.0d0 ! double force to zero
+
+    ! done here
+  end subroutine calc_Fv
 
 end module euler2d_eqs
 
