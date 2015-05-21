@@ -41,6 +41,10 @@ module element_opt_dg2d
      ! stored at Gauss points (1:neqs, 1:neqs, 1=plus;2=minus, 1:ngpseg) 
      real*8, dimension(:, :, :, :), allocatable :: dFpm
 
+     ! vars related to viscous terms
+     ! u-average stored at Gauss points (1:neqs, 1:ngpseg) 
+     real*8, dimension(:, :), allocatable :: Hs
+
   end type neigh_dg
 
   type edg_dg

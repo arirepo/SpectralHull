@@ -168,6 +168,9 @@ contains
        ! alloc/init dFpm(1:neqs, 1:neqs, 2, 1:ngpseg) 
        allocate(tneigh%dFpm(elem%neqs, elem%neqs, 2, r))
 
+       ! alloc/init Hs(1:neqs, 1:ngpseg) 
+       allocate(tneigh%Hs(elem%neqs, r))
+
        tneigh%xi = 0.0d0; tneigh%W = 0.0d0
        tneigh%xloc_in = 0.0d0; tneigh%xloc_out = 0.0d0
        tneigh%x = 0.0d0; tneigh%dx = 0.0d0
@@ -175,6 +178,7 @@ contains
        tneigh%psi_in = 0.0d0
        tneigh%Fstar = 0.0d0
        tneigh%dFpm = 0.0d0
+       tneigh%Hs = 0.0d0
 
        ! computing Legendre-Gauss-Jacobi points for integration
        ! and corresponding weight functions
@@ -1411,5 +1415,67 @@ print *, 'itr = ', itr
     ! done here
   end subroutine solve_prec_elemental
 
+  ! computes the on-edge U-average 1/2(u- + u+)
+  ! and stote it in tneigh%Hs
+  subroutine comp_Hs(wspace, elem, tedg, tneigh)
+    implicit none
+    class(dg_wspace) :: wspace ! work space
+    class(element_dg2d) :: elem
+    type(edg_dg) :: tedg
+    type(neigh_dg) :: tneigh
+
+    ! local vars
+    integer :: k
+    real*8 :: r, s
+    real*8, dimension(elem%neqs) :: UL, UR
+
+    ! loop over Gauss points per this neighboring segment
+    do k = 1, tneigh%ngpseg
+
+       ! HARD reset
+       UL = 0.0d0; UR = 0.0d0
+
+       !
+       !          <<< compute UL and UR procedure >>>
+       ! 
+       ! evaluate UL at the current Gauss point using interior (r, s) 
+       ! coordinates and the basis function of this element
+       r = tneigh%xloc_in(1, k); s = tneigh%xloc_in(2, k) 
+       call elem%comp_u(r, s, UL)
+
+       ! now decide on UR ... 
+       select case (wspace%bcs(tedg%tag)%name)
+
+       case ('interior') ! then UR is in the other neighboring element
+
+          ! evaluate UR at the current Gauss point using 
+          ! the neighboring element's local coordinates (r, s)
+          ! and the basis functions of the neighboring element
+          r = tneigh%xloc_out(1, k); s = tneigh%xloc_out(2, k)  
+          call wspace%elems(tneigh%elnum)%comp_u(r, s, UR)
+
+       case ('inflow', 'outflow') ! boundary edge; then UR is preset in bcs value
+
+          UR = wspace%bcs(tedg%tag)%val
+
+       case ('wall') ! NOTE : ONLY Viscous
+
+       ! HARD reset
+       UL = 0.0d0; UR = 0.0d0
+
+       case default
+
+          print *, 'could not decide on UR in comp_Hs! stop'
+          stop
+
+       end select
+
+       ! store the avarage u on this neigh at tneigh%Hs
+       tneigh%Hs(:, k) = 0.5d0 * (UL + UR)
+
+    end do ! next gauss point per neighboring element (on shared segment)
+
+    ! done here
+  end subroutine comp_Hs
 
 end module dg_workspace
