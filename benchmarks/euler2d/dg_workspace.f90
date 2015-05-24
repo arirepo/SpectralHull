@@ -1478,4 +1478,73 @@ print *, 'itr = ', itr
     ! done here
   end subroutine comp_Hs
 
+  ! computes the Wij which is the derivative of
+  ! conservative vars and store it per element.
+  ! later we can use W2w transform to obtain the
+  ! derivative of primitive vars.
+  !
+  subroutine comp_Wij(wspace)
+    implicit none
+    class(dg_wspace), target :: wspace
+
+    ! local vars
+    integer :: ielem, iedg, ineigh
+    class(element_dg2d), pointer :: elem => null()
+    type(edg_dg), pointer :: tedg => null()
+    type(neigh_dg), pointer :: tneigh => null()
+
+    ! LAPACK vars
+    integer :: NN, INFO
+
+    do ielem = 1, size(wspace%elems)
+       elem => wspace%elems(ielem)
+
+       ! 1- compute -int_Omega(w,j * ui dOmega)
+       !
+       ! NOTE : also HARD reset elem%Wij back to zero
+       !
+       call elem%comp_inter_ui_integral(elem%Wij)  
+
+       ! 2- accumulate the boundary integral 
+       do iedg = 1, elem%nedgs ! loop over edges
+
+          tedg => elem%edgs(iedg) !pick this edge
+
+
+          do ineigh = 1, size(tedg%neighs) ! loop over neigh segments on that edge
+
+             tneigh => tedg%neighs(ineigh) ! pick this neighboring segment
+
+             ! first compute the u-average per that neigh segment
+             call comp_Hs(wspace, elem, tedg, tneigh)
+
+
+             ! then compute boundary integral over that little segment
+             call elem%comp_bnd_ubar_integral(tneigh, elem%Wij)
+
+          end do !segments per that edge
+
+       end do ! edges per that element
+
+       ! 3- now this element is ready for and LU solve
+       ! ----------------  LAPACK SOLVE  ------------------------
+       ! init
+       NN = elem%neqs * elem%npe
+
+       ! solve using already stored LU of elemental mass matrix
+
+       CALL DGETRS( 'No transpose', NN, 2, elem%LUmass &
+            , NN, elem%IPIVmass, elem%Wij, NN, INFO )
+
+       if ( INFO .ne. 0) then
+          print *, 'something is wrong in LU solve in computing Wij! stop'
+          stop
+       end if
+       ! --------------------------------------------------------
+
+    end do ! end of elements
+
+    ! done here
+  end subroutine comp_Wij
+
 end module dg_workspace

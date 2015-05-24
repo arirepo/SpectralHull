@@ -399,17 +399,43 @@ contains
   ! here Fv(:,1) = fv, Fv(:, 2) = gv where fv and gv are viscous
   ! fluxes with notation given in that paper
   !
-  subroutine calc_Fv(mu, lambda, gamma, Pr, u, v, ux, uy, vx, vy, eex, eey, Fv)
+  subroutine calc_Fv(mu, lambda, gamma, Pr, W, Uin, Fv, adia)
     implicit none
     real*8, intent(in) :: mu, lambda, gamma, Pr
-    real*8, intent(in) :: u, v, ux, uy, vx, vy, eex, eey
+    real*8, dimension(:, :), intent(in) :: W
+    real*8, dimension(:), intent(in) :: Uin
     real*8, dimension(:, :), intent(out) :: Fv
+    logical, intent(in) :: adia
+
+    ! local vars
+    real*8 :: u, v, ux, uy, vx, vy, eex, eey
+    real*8, dimension(size(W,1), size(W,2)) :: ww
+    real*8, dimension(size(Uin)) :: uu
+    real*8 :: adia_on
+
+    ! init
+    if ( adia .eqv. .true.) then
+       adia_on = 0.0d0
+    else
+       adia_on = 1.0d0
+    end if
+
+    ! convert the conservative vars and their gradient 
+    ! to the primitive ones
+    call W2ww(W, Uin, ww, uu)
+
+    ! assign primitives
+    u = uu(2)
+    v = uu(3)
+    ux = ww(2,1); uy = ww(2,2)
+    vx = ww(3,1); vy = ww(3,2)
+    eex= ww(4,1); eey= ww(4,2)
 
     ! computing Fv(:, 1) = fv
     Fv(1, 1) = 0.0d0
     Fv(2, 1) = 2.0d0 * ux + lambda * (ux + vy)
     Fv(3, 1) = vx + uy
-    Fv(4, 1) = u * (2.0d0 * ux + lambda * (ux + vy)) + v * (vx + uy) + (gamma/Pr) * eex
+    Fv(4, 1) = u * (2.0d0 * ux + lambda * (ux + vy)) + v * (vx + uy) + (gamma/Pr) * eex * adia_on
     Fv(:, 1) = mu * Fv(:, 1) ! scale by viscosity
     Fv(1, 1) = 0.0d0 ! double force to zero
 
@@ -417,12 +443,54 @@ contains
     Fv(1, 2) = 0.0d0
     Fv(2, 2) = vx + uy
     Fv(3, 2) = 2.0d0 * vx + lambda * (ux + vy)
-    Fv(4, 2) = u * (vx + uy) + v * (2.0d0 * vy + lambda * (ux + vy)) + (gamma/Pr) * eey
+    Fv(4, 2) = u * (vx + uy) + v * (2.0d0 * vy + lambda * (ux + vy)) + (gamma/Pr) * eey * adia_on
     Fv(:, 2) = mu * Fv(:, 2) ! scale by viscosity
     Fv(1, 2) = 0.0d0 ! double force to zero
 
     ! done here
   end subroutine calc_Fv
+
+  ! converts the gradient of vector of
+  ! conservative vars "U" stored in W = grad(U)
+  ! to the gradient of vector of primitive vars "uu"
+  ! stored in ww = grad(uu)
+  !
+  ! here are the definitions
+  !
+  ! U = [rho, rho * u, rho * v, (rho * ee = e)]
+  ! uu = [rho, u, v, ee]
+  !
+  ! W(neqs, ndim), U(neqs), ww(neqs, ndim), uu(neqs)
+  !
+  subroutine W2ww(W, U, ww, uu)
+    implicit none
+    real*8, dimension(:, :), intent(in) :: W
+    real*8, dimension(:), intent(in) :: U
+    real*8, dimension(:, :), intent(out) :: ww
+    real*8, dimension(:), intent(out) :: uu
+
+    ! local vars
+    integer :: i, j, neqs, ndim
+
+    ! init
+    neqs = size(W, 1)
+    ndim = size(W, 2)
+    uu(1) = U(1)
+    uu(2:neqs) = U(2:neqs)/ U(1)
+
+    ! HARD reset
+    ww = 0.0d0
+
+    ! fill ww
+    ww(1, :) = W(1, :)
+    do i = 2, neqs
+       do j = 1, ndim
+          ww(i, j) = ( W(i,j) - W(1,j) * uu(i) ) / U(1)
+       end do
+    end do
+
+    ! done here
+  end subroutine W2ww
 
 end module euler2d_eqs
 

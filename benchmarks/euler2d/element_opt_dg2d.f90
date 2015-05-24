@@ -80,6 +80,10 @@ module element_opt_dg2d
      ! data struct related to matrix-free iterative procedures 
      real*8, dimension(:, :), allocatable, public :: U0, Ax
 
+     ! data struct related to viscous terms and Navier-Stokes eqs
+     ! (neqs*npe, ndim=1..2)
+     real*8, dimension(:, :), allocatable, public :: Wij
+
      !
      type(edg_dg), dimension(:), allocatable, public :: edgs
 
@@ -101,6 +105,8 @@ module element_opt_dg2d
      procedure, public :: init_mms => init_elem_mms
      procedure, public :: comp_pure_flux_jac => comp_pure_flux_jac_interior
      procedure, public :: comp_int_jac_integ => comp_inter_jac_integral
+     procedure, public :: comp_inter_ui_integral
+     procedure, public :: comp_bnd_ubar_integral
 
   end type element_dg2d
 
@@ -200,6 +206,10 @@ contains
           if ( allocated(elem%Ax) ) deallocate(elem%Ax)
           allocate(elem%Ax(neqs, npe))
           elem%Ax = 0.0d0
+
+          if ( allocated(elem%Wij) ) deallocate(elem%Wij)
+          allocate(elem%Wij((neqs*npe), 2))
+          elem%Wij = 0.0d0
 
           if ( allocated(elem%d_psi_d_x) ) deallocate(elem%d_psi_d_x)
           allocate(elem%d_psi_d_x(npe, elem%ngauss, 2))
@@ -889,5 +899,90 @@ if (elem%number .eq. 4) print *, 'xso = ', x, 'yso = ', y
 
     ! done here
   end subroutine comp_inter_jac_integral
+
+  ! computes -int_Omega(w,j * ui dOmega) in the interior 
+  ! of the DG element.
+  !
+  ! NOTE : integ(neqs*npe, ndim)
+  !
+  subroutine comp_inter_ui_integral(elem, integ)
+    implicit none
+    class(element_dg2d) :: elem
+    real*8, dimension(:, :), intent(out) :: integ 
+
+    ! local vars
+    integer :: i, k, idim, i1, i2
+    real*8, dimension(elem%neqs) :: u
+
+    ! HARD reset
+    integ = 0.0d0
+
+    
+    do k = 1, elem%ngauss
+
+       ! evaluate U at the current Gauss point
+       call elem%comp_u(elem%r(k), elem%s(k), u)
+
+       do i = 1, elem%npe
+
+          ! select the range
+          i1 = (i-1)*elem%neqs + 1
+          i2 = i * elem%neqs
+
+          do idim = 1, 2 !2d case
+
+             ! add contribution
+             integ(i1:i2, idim) = integ(i1:i2, idim) &
+                  - elem%d_psi_d_x(i, k, idim) * u &
+                  * elem%coeff * elem%JJ(k) * elem%W(k)
+          end do
+
+       end do
+
+    end do
+
+    ! done here
+  end subroutine comp_inter_ui_integral
+
+  ! computes int_dOmega(w ubar_i nj) on the current <tneigh>
+  ! shared segment and accumulates the result to <integ>!
+  !
+  ! integ(neqs*npe, ndim)
+  !
+  subroutine comp_bnd_ubar_integral(elem, tneigh, integ)
+    implicit none
+    class(element_dg2d), intent(in) :: elem
+    type(neigh_dg), intent(in) :: tneigh
+    real*8, dimension(:,:), intent(inout) :: integ 
+
+    ! local vars
+    integer :: i, k, i1, i2, idim
+
+    ! HINT : index <i> can be restricted to nodes 
+    ! on the current edg to improve performance!
+    do k = 1, tneigh%ngpseg
+
+       ! add to boundary integral
+       do i = 1, elem%npe
+
+          ! select range
+          i1 = (i-1)*elem%neqs + 1
+          i2 = i * elem%neqs
+
+          do idim = 1, 2
+             ! add contribution
+             integ(i1:i2, idim) = integ(i1:i2, idim) &
+                  + tneigh%psi_in(i, k) * tneigh%Hs(:, k) * tneigh%n(idim, k) &
+                  * tneigh%s(k) * tneigh%W(k)
+          end do ! next dimension
+
+       end do ! next point per element
+
+
+    end do ! next gauss point per neighbor segment
+
+    ! done here
+  end subroutine comp_bnd_ubar_integral
+
 
 end module element_opt_dg2d
