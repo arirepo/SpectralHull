@@ -984,5 +984,42 @@ if (elem%number .eq. 4) print *, 'xso = ', x, 'yso = ', y
     ! done here
   end subroutine comp_bnd_ubar_integral
 
+  ! evaluates Wij at a local point (r, s)
+  ! in this discontinious element
+  !
+  ! W(neqs, ndim)
+  !
+  subroutine comp_Wij_point_dg(elem, r, s, W)
+    implicit none
+    class(element_dg2d), intent(inout) :: elem
+    real*8, intent(in) :: r, s
+    real*8, dimension(:, :), intent(out) :: W
+
+    ! local vars
+    integer :: k, i1, i2, idim
+    real*8, dimension(size(elem%psi, 1)) :: psi
+
+    ! hard reset
+    W = 0.0d0
+
+    ! eval basis funcs at point (r, s)
+    call elem%tbasis%eval(r, s, 0, psi)
+
+    ! find W ...
+    do k = 1, elem%npe
+
+       ! find the range
+       i1 = (k-1) * elem%neqs + 1
+       i2 = k * elem%neqs
+
+       ! add to W at point
+       do idim = 1, 2
+          W(:, idim) = W(:, idim) + elem%Wij(i1:i2, idim) * psi(k)
+       end do
+
+    end do
+
+    ! done here
+  end subroutine comp_Wij_point_dg
 
 end module element_opt_dg2d
