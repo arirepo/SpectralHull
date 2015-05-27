@@ -7,6 +7,7 @@ program benchmark_geom
   use spem_2d
   use plot_curved_elems
   use plot_curved_elems_dg
+  use element_opt_dg2d
   implicit none
 
   ! local vars
@@ -18,6 +19,7 @@ program benchmark_geom
   character(len = 128), dimension(4) :: bc_names0
   real*8, dimension(:, :), allocatable :: utmp
   type(fem_struct) :: tfem
+  type(phys_props) :: tprops
 
   ! grid generation
   ! call read_segment_file('../../geom/naca0012_euler.dat', 'parabolic', wspace%grd)
@@ -26,7 +28,9 @@ program benchmark_geom
   ! call trigen('pnq32.0jY', wspace%grd)
   ! call trigen_based_TETREX('../../geom/cylinder_euler_tetrex.grd', wspace%grd)
   !call trigen_based_TETREX('../../geom/naca0012_euler_tetrex.grd', wspace%grd)
-  call read_segment_file('../../geom/coarse_cylinder_tri2.dat', 'parabolic', wspace%grd)
+  ! call read_segment_file('../../geom/coarse_cylinder_tri2.dat', 'parabolic', wspace%grd)
+  call read_segment_file('../../geom/small_cylinder.dat', 'parabolic', wspace%grd)
+
   ! call read_segment_file('../../geom/chambered_airfoil.dat', 'parabolic', wspace%grd)
   call trigen('pnq34.0jY', wspace%grd)
   ! call trigen('pnq36.1jY', wspace%grd)
@@ -74,8 +78,8 @@ program benchmark_geom
   end do
   bc_names0(1) = 'outflow'
   bc_names0(2) = 'outflow'
-  bc_names0(3) = 'wall'
-  bc_names0(4) = 'wall'
+  bc_names0(3) = 'wall' !'outflow'
+  bc_names0(4) = 'wall' !'outflow'
 
   ! bc_names0(1) = 'wall'
   ! bc_names0(2) = 'wall'
@@ -88,15 +92,21 @@ program benchmark_geom
   ! bc_names0(4) = 'outflow'
 
   ! init workspace
+  tprops%is_viscous = .true.
+  tprops%mu = 0.0001d0
+  tprops%lambda = -2.0d0/ 3.0d0
+  tprops%Pr = 0.71d0
+  tprops%adia = .true.
+
   call wspace%init(neqs = 4, gamma = gamma0 &
-       , bc_names = bc_names0, bc_vals = bc_vals0, tol = tolerance)
+       , bc_names = bc_names0, bc_vals = bc_vals0, tol = tolerance, tprops = tprops)
 
   ! init the field
   call wspace%init_field(rho0, u0, v0, P0)
 
   ! march only one time step
-  ! call wspace%march_field(dt = 1.0d-5, itrs = 5000)
-  call wspace%march_euler_implicit(dt = 4.0d-3, itrs = 100, inewtons = 2, num = 20, nrst = 1, epsil = 1.d-14)
+  call wspace%march_field(dt = 1.0d-5, itrs = 200)
+  ! call wspace%march_euler_implicit(dt = 4.0d-3, itrs = 100, inewtons = 2, num = 20, nrst = 1, epsil = 1.d-14)
 ! print *, 'heyhey'
   ! call wspace%march_field(dt = 1.0d-4, itrs = 30000)
 

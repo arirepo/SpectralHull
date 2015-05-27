@@ -47,7 +47,7 @@ contains
   ! initilizes the workspace
   ! HINT : the grid in wspace%grd should already
   ! been allocated and initialized properly
-  subroutine init_wspace(wspace, neqs, gamma, bc_names, bc_vals, tol)
+  subroutine init_wspace(wspace, neqs, gamma, bc_names, bc_vals, tol, tprops)
     implicit none
     class(dg_wspace), intent(inout) :: wspace
     integer, intent(in) :: neqs
@@ -55,6 +55,7 @@ contains
     character(len = 128), dimension(:), intent(in) :: bc_names
     real*8, dimension(:, :), intent(in) :: bc_vals
     real*8, intent(in) :: tol
+    class(phys_props), intent(in) :: tprops
 
     ! local vars
     integer :: i, nbcs, j
@@ -75,6 +76,7 @@ contains
     do i = 1, size(wspace%elems)
        call wspace%elems(i)%init(wspace%elems(i) &
             , i, wspace%grd, neqs, gamma)
+
     end do
 
     ! initializing boundary conditions
@@ -95,6 +97,12 @@ contains
           call wspace%init_edg_quadrat(wspace%elems(i), j, tol)
        end do
     end do
+
+    wspace%elems(:)%local_props%is_viscous = tprops%is_viscous
+    wspace%elems(:)%local_props%mu = tprops%mu
+    wspace%elems(:)%local_props%lambda = tprops%lambda
+    wspace%elems(:)%local_props%Pr = tprops%Pr
+    wspace%elems(:)%local_props%adia = tprops%adia
 
     ! done here
   end subroutine init_wspace
@@ -279,8 +287,8 @@ contains
   !
   subroutine comp_Fstar(wspace, elem, tedg, tneigh)
     implicit none
-    class(dg_wspace) :: wspace ! work space
-    class(element_dg2d) :: elem
+    class(dg_wspace), target :: wspace ! work space
+    class(element_dg2d), target :: elem
     type(edg_dg) :: tedg
     type(neigh_dg) :: tneigh
 
@@ -291,6 +299,12 @@ contains
     logical, dimension(4) :: f_select
     real*8, dimension(elem%neqs) :: fvl_p, fvl_m
     real*8, dimension(elem%neqs, elem%neqs) :: d_fvl_p, d_fvl_m
+    real*8, dimension(elem%neqs, 2) :: Wk, FvL, FvR
+    logical :: edge_adiabatic
+    class(element_dg2d), pointer :: telem => null()
+
+    ! init
+    edge_adiabatic = .false.
 
     ! loop over Gauss points per this neighboring segment
     do k = 1, tneigh%ngpseg
@@ -330,6 +344,11 @@ contains
 ! print *, 'UR = ', UR
 ! stop
        case ('wall')
+
+          ! impose adiabatic condition
+          if ( elem%local_props%adia ) then
+             edge_adiabatic = .true.
+          end if
 
           ! do nothing for now!
 
@@ -384,6 +403,42 @@ contains
 
 ! print *, 'FP = ', FP
 ! print *, 'FM = ', FM
+
+       if ( elem%local_props%is_viscous ) then
+
+          ! calc left viscous flux FvL
+          !
+          telem => elem
+          ! evaluate the gradient of conservative vars
+          r = tneigh%xloc_in(1, k); s = tneigh%xloc_in(2, k)
+          call telem%comp_u(r, s, UL) 
+          call telem%comp_Wij_point_dg(r, s, Wk)
+          ! now use Wk and Hs= ubar to compute viscous fluxes at edges 
+          call calc_Fv(telem%local_props%mu, telem%local_props%lambda &
+               , telem%gamma, telem%local_props%Pr &
+               , Wk, UL, FvL, edge_adiabatic)
+
+          ! calc right viscous flux FvR
+          !
+          if ( wspace%bcs(tedg%tag)%name .eq. 'interior') then
+             telem => wspace%elems(tneigh%elnum)
+             ! evaluate the gradient of conservative vars
+             r = tneigh%xloc_out(1, k); s = tneigh%xloc_out(2, k)
+             call telem%comp_u(r, s, UR)  
+             call telem%comp_Wij_point_dg(r, s, Wk)
+             ! now use Wk and Hs= ubar to compute viscous fluxes at edges 
+             call calc_Fv(telem%local_props%mu, telem%local_props%lambda &
+                  , telem%gamma, telem%local_props%Pr &
+                  , Wk, UR, FvR, edge_adiabatic)
+
+             ! take average
+             FvL = 0.5d0 * (FvL + FvR)
+          end if
+
+          nx = tneigh%n(1, k); ny = tneigh%n(2, k)
+          tneigh%Fstar(:, k) = tneigh%Fstar(:, k) - FvL(:, 1) * nx - FvL(:, 2) * ny 
+
+       end if
 
     end do ! next gauss point per neighboring element (on shared segment)
 
@@ -461,10 +516,24 @@ contains
     integer :: i
     type(element_dg2d), pointer :: elem => null() 
 
+    ! first init wall nodes which they are important in
+    ! viscous boundary conditions 
+    call init_wall_nodes(wspace = wspace, tol = 1.d-10)
+
     do i = 1, size(wspace%elems)
 
        elem => wspace%elems(i)
        call elem%init_elem_U(rho, u, v, P)
+
+       ! apply non-slip viscous wall boundary condition if needed
+       if ( elem%local_props%is_viscous ) then
+          call elem%apply_non_slip_wall_bc(elem%U)
+
+          ! compute imposed mass matrix too
+          call elem%create_imposed_mass_matrix()
+
+       end if
+
 !        call elem%init_mms()
 
 ! if ( (elem%number .eq. 3) .or. (elem%number .eq. 4) ) elem%U(3, :) = elem%U(3, :) + 1.4d0 
@@ -486,6 +555,13 @@ contains
     integer :: itr, i
 
     do itr = 1, itrs ! time step loop
+
+       ! compute the gradient of conservatives vars required
+       ! for viscous terms if elements are selected to be viscous
+       if ( all(wspace%elems(:)%local_props%is_viscous) ) then
+          print *, 'compute grad of U at iteration ', itr
+          call comp_Wij(wspace)
+       end if
 
        ! loop over all elements and find rhs
        do i = 1, size(wspace%elems) 
@@ -1461,7 +1537,9 @@ print *, 'itr = ', itr
        case ('wall') ! NOTE : ONLY Viscous
 
        ! HARD reset
-       UL = 0.0d0; UR = 0.0d0
+       ! UL(2:3) = 0.0d0; UR = 0.0d0
+       UL(2:3) = 0.0d0
+          UR = UL
 
        case default
 
@@ -1471,7 +1549,7 @@ print *, 'itr = ', itr
        end select
 
        ! store the avarage u on this neigh at tneigh%Hs
-       tneigh%Hs(:, k) = 0.5d0 * (UL + UR)
+       tneigh%Hs(:, k) = 0.5d0 * (UL + UR) 
 
     end do ! next gauss point per neighboring element (on shared segment)
 
@@ -1546,5 +1624,111 @@ print *, 'itr = ', itr
 
     ! done here
   end subroutine comp_Wij
+
+
+  ! just call it once per grid configuration
+  ! 
+  subroutine init_wall_nodes(wspace, tol)
+    implicit none
+    class(dg_wspace), target :: wspace
+    real*8, intent(in) :: tol
+
+    ! local vars
+    integer :: ielem, iedg, ipt, icurve, pt, ii
+    class(element_dg2d), pointer :: elem => null()
+    class(edg_dg), pointer :: tedg => null()
+    real*8 :: xx, yy, tt
+
+    do ielem = 1, size(wspace%elems)
+
+       elem => wspace%elems(ielem)
+
+       do iedg = 1, size(elem%edgs)
+
+          tedg => elem%edgs(iedg)
+
+          ! first add the on-edge wall nodes if this edge is tagged "Wall"
+          if (wspace%bcs(tedg%tag)%name .eq. 'wall') then
+             do ii = 1, size(tedg%pts)
+                call add_wall_node(elem%wall_nodes, tedg%pts(ii))
+             end do
+          end if
+
+          ! for each nodes on edge see if it is on any wall???
+          do ipt = 1, size(tedg%pts)
+
+             pt = tedg%pts(ipt)
+             xx = elem%x(1, pt)
+             yy = elem%x(2, pt)
+
+             ! loop over wall boundaries
+             ! NOTE : curve number is the tag
+             do icurve = 1, size(wspace%grd%bn_curves)
+
+                ! if that boundary curve is not wall then go to
+                ! the next boundary curve 
+                if ( wspace%bcs(icurve)%name .ne. 'wall' ) cycle
+
+                ! then find that node on this wall
+                tt = 0.0d0
+                call find_t(wspace%grd, icurve, xx, yy, tol, tt)
+
+                if ( tt .eq. -1.0d0 ) then
+
+                   cycle ! not found on that wall curve
+
+                else ! add it to the wall_nodes of this element
+
+                   call add_wall_node(elem%wall_nodes, pt)
+
+                end if
+
+             end do ! next wall curve
+
+          end do ! next node on this edge
+
+       end do ! next edge of this element
+
+    end do ! next element in the workspace
+
+    ! done here
+  end subroutine init_wall_nodes
+
+  ! add an integer "pt" to the end of integer array "idat"
+  subroutine add_wall_node(idat, pt)
+    implicit none
+    integer, dimension(:), allocatable :: idat
+    integer, intent(in) :: pt
+
+    ! local vars
+    integer :: n, ii
+    integer, dimension(:), allocatable :: itmp
+
+    if ( .not. allocated(idat) ) then
+       n = 1
+    else
+
+       ! check if it already exist then quickly return
+       do ii = 1, size(idat)
+          if ( idat(ii) .eq. pt ) return
+       end do
+
+       ! if not then continue adding it ...
+       n = size(idat) + 1
+
+    end if
+
+    allocate(itmp(n))
+
+    if ( n > 1 ) itmp(1:(n-1)) = idat(1:(n-1))
+
+    itmp(n) = pt
+
+    call move_alloc(itmp, idat)
+
+    if (allocated(itmp)) deallocate(itmp)
+
+    ! done here
+  end subroutine add_wall_node
 
 end module dg_workspace

@@ -6,6 +6,15 @@ module element_opt_dg2d
 
   private
 
+  type phys_props
+
+     ! viscous props
+     logical :: is_viscous = .false.
+     real*8 :: mu, lambda, Pr
+     logical :: adia
+
+  end type phys_props
+
   type neigh_dg
      ! the neighbor element number and number of 
      !gauss points per this common segment
@@ -63,9 +72,9 @@ module element_opt_dg2d
      real*8, public :: gamma
      ! (neqs * npe, neqs * npe)
      real*8, dimension(:, :), allocatable, public :: Mass
-     real*8, dimension(:, :), allocatable, public :: LUmass, LUmass_imp 
+     real*8, dimension(:, :), allocatable, public :: LUmass, LUmass_imp, LU_imposed_mass 
      ! the pivot matrix (neqs * npe)
-     integer, dimension(:), allocatable, public :: IPIVmass, IPIVmass_imp
+     integer, dimension(:), allocatable, public :: IPIVmass, IPIVmass_imp, IPIV_LU_imposed_mass
      ! elemental solution : Uij (i=1,neqs <> j=1,npe) 
      real*8, dimension(:, :), allocatable, public :: U, Us, rhs, So
      ! physical derivatives of basis functions at Gauss points
@@ -83,6 +92,8 @@ module element_opt_dg2d
      ! data struct related to viscous terms and Navier-Stokes eqs
      ! (neqs*npe, ndim=1..2)
      real*8, dimension(:, :), allocatable, public :: Wij
+     type(phys_props), public :: local_props
+     integer, dimension(:), allocatable, public :: wall_nodes
 
      !
      type(edg_dg), dimension(:), allocatable, public :: edgs
@@ -107,12 +118,15 @@ module element_opt_dg2d
      procedure, public :: comp_int_jac_integ => comp_inter_jac_integral
      procedure, public :: comp_inter_ui_integral
      procedure, public :: comp_bnd_ubar_integral
+     procedure, public :: comp_Wij_point_dg
+     procedure, public :: apply_non_slip_wall_bc
+     procedure, public :: create_imposed_mass_matrix
 
   end type element_dg2d
 
 
 
-  public :: element_dg2d, edg_dg, neigh_dg
+  public :: element_dg2d, edg_dg, neigh_dg, phys_props
 
 
 contains
@@ -175,6 +189,10 @@ contains
           allocate(elem%LUmass_imp(neqs * npe, neqs * npe))
           elem%LUmass_imp = 0.0d0
 
+          if ( allocated(elem%LU_imposed_mass) ) deallocate(elem%LU_imposed_mass)       
+          allocate(elem%LU_imposed_mass(neqs * npe, neqs * npe))
+          elem%LU_imposed_mass = 0.0d0
+
           if ( allocated(elem%IPIVmass) ) deallocate(elem%IPIVmass)       
           allocate(elem%IPIVmass(neqs * npe))
           elem%IPIVmass = (/ (ii, ii = 1, (neqs * npe) ) /)
@@ -182,6 +200,10 @@ contains
           if ( allocated(elem%IPIVmass_imp) ) deallocate(elem%IPIVmass_imp)       
           allocate(elem%IPIVmass_imp(neqs * npe))
           elem%IPIVmass_imp = (/ (ii, ii = 1, (neqs * npe) ) /)
+
+          if ( allocated(elem%IPIV_LU_imposed_mass) ) deallocate(elem%IPIV_LU_imposed_mass)
+          allocate(elem%IPIV_LU_imposed_mass(neqs * npe))
+          elem%IPIV_LU_imposed_mass = (/ (ii, ii = 1, (neqs * npe) ) /)
 
           if ( allocated(elem%U) ) deallocate(elem%U)
           allocate(elem%U(neqs, npe))
@@ -421,8 +443,9 @@ contains
     class(element_dg2d), intent(inout) :: elem
 
     ! local vars
-    integer :: k
+    integer :: k, idim
     real*8, dimension(elem%neqs) :: Uk
+    real*8, dimension(elem%neqs, 2) :: Wk, Fv
 
     do k = 1, elem%ngauss
 
@@ -432,6 +455,23 @@ contains
        ! evaluate Fluxes and store them
        call calc_pure_euler2d_flux(Q = Uk, gamma = elem%gamma &
             , F = elem%Fk(:,k, 1), G = elem%Fk(:,k, 2))
+
+       if ( elem%local_props%is_viscous ) then ! add viscous fluxes
+
+          ! evaluate the gradient of conservative vars
+          call elem%comp_Wij_point_dg(elem%r(k), elem%s(k), Wk)
+
+          ! compute viscous fluxes
+          call calc_Fv(elem%local_props%mu, elem%local_props%lambda &
+               , elem%gamma, elem%local_props%Pr &
+               , Wk, Uk, Fv, .false.)
+
+          ! finally add viscous fluxes
+          do idim = 1, 2
+             elem%Fk(:,k, idim) = elem%Fk(:,k, idim) - Fv(:, idim)
+          end do
+
+       end if
 
     end do
 
@@ -700,8 +740,16 @@ contains
 
     ! local vars
     integer :: i
+! real*8 :: xx, yy, rr, uu, vv, CC
 
     do i = 1, elem%npe
+
+! xx = elem%x(1, i); yy = elem%x(2, i)
+! rr = sqrt(xx**2.0d0 + yy**2.0d0)
+! CC = -2.0d0
+
+! uu = (1.0d0 - exp( CC * (rr - 0.5d0)**2.0d0 )) * u
+! vv = (1.0d0 - exp( CC * (rr - 0.5d0)**2.0d0 )) * v
 
        ! u2U(rho, u, v, P, gamma, UU)
        call u2U(rho, u, v, P, elem%gamma, elem%U(:, i))
@@ -717,7 +765,7 @@ contains
   subroutine update_explicit_euler(elem, rhs, dt)
     implicit none
     class(element_dg2d), intent(inout) :: elem
-    real*8, dimension(:, :), intent(in) :: rhs
+    real*8, dimension(:, :), intent(inout) :: rhs
     real*8, intent(in) :: dt
 
     ! local vars
@@ -729,11 +777,32 @@ contains
     allocate(rhs_lapack(N, 1))
     allocate(rhs_new(elem%neqs, elem%npe))
 
+    ! apply zero-rhs if imposed wall exist in viscous flow
+    if ( elem%local_props%is_viscous ) then
+       call elem%apply_non_slip_wall_bc(rhs)
+    end if
+
     ! solve using already stored LU
     rhs_lapack = reshape(rhs, (/ N, 1 /) )
 
-    CALL DGETRS( 'No transpose', N, 1, elem%LUmass &
-         , N, elem%IPIVmass, rhs_lapack, N, INFO )
+    if ( elem%local_props%is_viscous ) then
+       if ( allocated(elem%wall_nodes) ) then
+
+          CALL DGETRS( 'No transpose', N, 1, elem%LU_imposed_mass &
+               , N, elem%IPIV_LU_imposed_mass, rhs_lapack, N, INFO )
+
+       else
+
+          CALL DGETRS( 'No transpose', N, 1, elem%LUmass &
+               , N, elem%IPIVmass, rhs_lapack, N, INFO )
+
+       end if
+    else
+
+       CALL DGETRS( 'No transpose', N, 1, elem%LUmass &
+            , N, elem%IPIVmass, rhs_lapack, N, INFO )
+
+    end if
 
     if ( INFO .ne. 0) then
        print *, 'something is wrong in LU solve in explicit euler update! stop'
@@ -744,6 +813,7 @@ contains
 
     ! update
     elem%U = elem%U + dt * rhs_new   
+
 
     ! clean ups
     deallocate(rhs_lapack, rhs_new)
@@ -1021,5 +1091,74 @@ if (elem%number .eq. 4) print *, 'xso = ', x, 'yso = ', y
 
     ! done here
   end subroutine comp_Wij_point_dg
+
+  !
+  ! applys non-slip wall boundary conditions
+  ! if viscous terms are included
+  !
+  subroutine apply_non_slip_wall_bc(elem, rhs)
+    implicit none
+    class(element_dg2d), intent(in) :: elem
+    real*8, dimension(:, :), intent(inout) :: rhs
+
+    ! local vars
+    integer :: inode
+
+    if ( allocated(elem%wall_nodes) ) then
+
+       do inode = 1, size(elem%wall_nodes)
+          rhs(2:3, elem%wall_nodes(inode)) = 0.0d0
+       end do
+
+    end if
+
+    ! done here
+  end subroutine apply_non_slip_wall_bc
+
+  ! compute the imposed mass matrix and store
+  ! its LU factorization for future solves
+  ! This is important if viscous wall BCs exist
+  ! 
+  subroutine create_imposed_mass_matrix(elem)
+    implicit none
+    class(element_dg2d) :: elem
+
+    ! local vars
+    integer :: inode, ieq, ii, ind
+
+    ! LAPACK VARS
+    integer :: LDA, INFO 
+
+    ! apply wall bcs (if any)
+    if( allocated(elem%wall_nodes) ) then
+
+       ! first take a fresh copy of already computed mass matrix
+       elem%LU_imposed_mass = elem%Mass
+
+       ! then impose fixed BCs
+       do inode = 1, size(elem%wall_nodes)
+          do ieq = 2, 3
+             ! compute the range
+             ind = elem%wall_nodes(inode)
+             ii = (ind - 1) * elem%neqs + ieq
+             ! freez the row
+             elem%LU_imposed_mass(ii, :) = 0.0d0
+             ! put one on the main diagonal
+             elem%LU_imposed_mass(ii, ii) = 1.0d0
+          end do
+       end do
+
+       ! then store LU
+       LDA = size(elem%LU_imposed_mass, 1)
+       call dgetrf(LDA, LDA, elem%LU_imposed_mass, LDA, elem%IPIV_LU_imposed_mass, INFO)
+       if ( INFO .ne. 0) then
+          print *, 'something is wrong in LU factorization of imposed mass matrix! stop'
+          stop
+       end if
+
+    end if
+
+    ! done here
+  end subroutine create_imposed_mass_matrix
 
 end module element_opt_dg2d
