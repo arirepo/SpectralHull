@@ -162,7 +162,7 @@ contains
        end if
 
        ! degree of exactness relation for 1d Gauss legendre: 2r - 1 = max_npedg -1
-       r = nint(3.5d0 * dble(max_npedg) / dble(2)) ! 3.5 is safety factor :)
+       r = 2 * elem%p + 1 ! 3.5 is safety factor :)
        tneigh%ngpseg = r
 
        ! allocate neigh specific arrays
@@ -343,13 +343,14 @@ contains
           UR = wspace%bcs(tedg%tag)%val
 ! print *, 'UR = ', UR
 ! stop
+UR = UL
        case ('wall')
 
-          ! impose adiabatic condition
-          if ( elem%local_props%adia ) then
-             edge_adiabatic = .true.
-          end if
-
+          ! ! impose adiabatic condition
+          ! if ( elem%local_props%adia ) then
+          !    edge_adiabatic = .true.
+          ! end if
+UR = UL
           ! do nothing for now!
 
        case default
@@ -525,16 +526,16 @@ contains
        elem => wspace%elems(i)
        call elem%init_elem_U(rho, u, v, P)
 
-       ! apply non-slip viscous wall boundary condition if needed
-       if ( elem%local_props%is_viscous ) then
-          call elem%apply_non_slip_wall_bc(elem%U)
+       ! ! apply non-slip viscous wall boundary condition if needed
+       ! if ( elem%local_props%is_viscous ) then
+       !    call elem%apply_non_slip_wall_bc(elem%U)
 
-          ! compute imposed mass matrix too
-          call elem%create_imposed_mass_matrix()
+       !    ! compute imposed mass matrix too
+       !    call elem%create_imposed_mass_matrix()
 
-       end if
+       ! end if
 
-!        call elem%init_mms()
+       call elem%init_mms()
 
 ! if ( (elem%number .eq. 3) .or. (elem%number .eq. 4) ) elem%U(3, :) = elem%U(3, :) + 1.4d0 
     end do
@@ -567,7 +568,16 @@ contains
        do i = 1, size(wspace%elems) 
           ! compute rhs
           call wspace%comp_elem_rhs(wspace%elems(i), wspace%elems(i)%rhs)
+          print*, 'element#', i, maxval(abs(wspace%elems(i)%rhs))
+
        end do
+
+       do i = 1, size(wspace%elems) 
+          ! write rhs to U for visualization
+          wspace%elems(i)%U = wspace%elems(i)%rhs 
+       end do
+
+       return
 
        ! loop over all elements and update elem%U using elem%rhs 
        do i = 1, size(wspace%elems) 
@@ -1532,13 +1542,13 @@ print *, 'itr = ', itr
 
        case ('inflow', 'outflow') ! boundary edge; then UR is preset in bcs value
 
-          UR = wspace%bcs(tedg%tag)%val
-
+          !UR = wspace%bcs(tedg%tag)%val
+UR = UL
        case ('wall') ! NOTE : ONLY Viscous
 
        ! HARD reset
        ! UL(2:3) = 0.0d0; UR = 0.0d0
-       UL(2:3) = 0.0d0
+       !UL(2:3) = 0.0d0
           UR = UL
 
        case default

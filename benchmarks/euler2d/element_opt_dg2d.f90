@@ -121,6 +121,7 @@ module element_opt_dg2d
      procedure, public :: comp_Wij_point_dg
      procedure, public :: apply_non_slip_wall_bc
      procedure, public :: create_imposed_mass_matrix
+     procedure, public :: comp_elem_source_term_viscous
 
   end type element_dg2d
 
@@ -338,7 +339,8 @@ contains
           call elem%comp_mass()
 
           ! compute source term for MMS
-          call elem%comp_source()
+          ! call elem%comp_source()
+          call elem%comp_elem_source_term_viscous()
 
        class default
 
@@ -591,13 +593,14 @@ contains
                   + elem%d_psi_d_x(i, k, idim) * elem%Fk(:,k, idim) &
                   * elem%coeff * elem%JJ(k) * elem%W(k)
           end do
-!           ! add MMS
-!           integ(:, i) = integ(:, i) &
-!                + elem%psi(i, k) * elem%So(:,k) &
-!                * elem%coeff * elem%JJ(k) * elem%W(k)
-! if ( all (elem%edgs(:)%tag .eq. 0) ) then
-! print *, 'mms ', elem%number, elem%coeff, elem%JJ(k), elem%W(k), elem%ngauss
-! end if
+          ! add MMS
+          integ(:, i) = integ(:, i) &
+               + elem%psi(i, k) * elem%So(:,k) &
+               * elem%coeff * elem%JJ(k) * elem%W(k)
+          ! if ( all (elem%edgs(:)%tag .eq. 0) ) then
+          !    print *, 'mms ', elem%number, elem%coeff, elem%JJ(k), elem%W(k), elem%ngauss
+          ! end if
+
        end do
     end do
 
@@ -1160,5 +1163,74 @@ if (elem%number .eq. 4) print *, 'xso = ', x, 'yso = ', y
 
     ! done here
   end subroutine create_imposed_mass_matrix
+
+  ! computes element's sorce term for MMS
+  ! of viscous flow
+  subroutine comp_elem_source_term_viscous(elem)
+    implicit none
+    class(element_dg2d), intent(inout) :: elem
+
+    ! local vars
+    integer :: k
+    real*8, dimension(2) :: xx
+    real*8 :: x, y, cg, Pr0, gamma0, mu0
+
+    cg = elem%local_props%lambda
+    gamma0 = elem%gamma
+    Pr0 = elem%local_props%Pr
+    mu0 = elem%local_props%mu
+
+    do k = 1, elem%ngauss
+
+       call elem%comp_x(elem%r(k), elem%s(k), xx)
+       x = xx(1); y = xx(2)
+
+       ! fill rhs vector
+       elem%So(1, k) =  0.2D1 * x * y + 0.1D1 + x ** 2
+
+       elem%So(2, k) = 0.2D1 * x * y ** 2 + x + 0.2D1 * y + x ** 3 + 0.2D1 * x ** 2 * y
+
+       elem%So(3, k) = 0.5D1 * x ** 2 * y + 0.2D1 * x * y ** 2 + 0.5D1 * y + 0.2D1 * x &
+            + 0.2D1 * x ** 3
+
+       elem%So(4, k) = -0.5000000000D0 * (-0.12D2 * y ** 3 * Pr0 * x ** 5 * gamma0 &
+            - 0.4D1 * y ** 3 * Pr0 * x ** 7 * gamma0 - 0.50D2 * y ** 2 * Pr0 * &
+            x ** 6 * gamma0 - 0.12D2 * y ** 2 * Pr0 * x ** 8 * gamma0 - 0.4D1 &
+            * y ** 3 * Pr0 * x * gamma0 - 0.54D2 * y ** 2 * Pr0 * x ** 2 * gamma0 &
+            - 0.12D2 * y ** 3 * Pr0 * x ** 3 * gamma0 - 0.78D2 * y ** 2 * &
+            Pr0 * x ** 4 * gamma0 - 0.54D2 * y * Pr0 * x ** 3 * gamma0 - 0.14D2 &
+            * y * Pr0 * x * gamma0 - 0.78D2 * y * Pr0 * x ** 5 * gamma0 - 0.50D2 &
+            * y * Pr0 * x ** 7 * gamma0 - 0.12D2 * y * Pr0 * x ** 9 * gamma0 &
+            + 0.36D2 * mu0 * Pr0 * x ** 2 * gamma0 + 0.36D2 * mu0 * Pr0 * &
+            x ** 4 * gamma0 + 0.12D2 * mu0 * Pr0 * x ** 6 * gamma0 + 0.12D2 * &
+            mu0 * x ** 2 * y ** 2 * gamma0 + 0.2D1 * mu0 * cg * Pr0 * gamma0 & 
+            - 0.6D1 * mu0 * cg * Pr0 * x ** 2 - 0.6D1 * mu0 * cg * Pr0 * x ** 4 &
+            - 0.2D1 * mu0 * cg * Pr0 * x ** 6 + 0.6D1 * mu0 * cg * Pr0 * x ** 2 &
+            * gamma0 + 0.6D1 * mu0 * cg * Pr0 * gamma0 * x ** 4 + 0.2D1 * & 
+            mu0 * cg * Pr0 * x ** 6 * gamma0 - 0.9D1 * Pr0 * x ** 2 * gamma0 - &
+            0.18D2 * Pr0 * x ** 4 * gamma0 - 0.20D2 * Pr0 * x ** 6 * gamma0 + &
+            0.36D2 * y ** 2 * Pr0 * x ** 2 + 0.42D2 * y * Pr0 * x ** 3 + 0.4D1 &
+            * y ** 3 * Pr0 * x + 0.10D2 * y * Pr0 * x + 0.66D2 * y * Pr0 * x** 5 &
+            + 0.46D2 * y * Pr0 * x ** 7 + 0.12D2 * y * Pr0 * x ** 9 - 0.14D2 &
+            * y ** 2 * Pr0 * gamma0 + 0.12D2 * y ** 3 * Pr0 * x ** 3 + 0.60D2 * &
+            y ** 2 * Pr0 * x ** 4 + 0.12D2 * y ** 3 * Pr0 * x ** 5 + 0.4D1 &
+            * y ** 3 * Pr0 * x ** 7 + 0.44D2 * y ** 2 * Pr0 * x ** 6 + 0.12D2 &
+            * y ** 2 * Pr0 * x ** 8 + 0.12D2 * mu0 * Pr0 * gamma0 - 0.36D2 &
+            * mu0 * Pr0 * x ** 2 - 0.36D2 * mu0 * Pr0 * x ** 4 - 0.12D2 * mu0 &
+            * Pr0 * x ** 6 + 0.2D1 * mu0 * x ** 2 * gamma0 - 0.4D1 * mu0 * y ** 2 &
+            * gamma0 + 0.18D2 * mu0 * x ** 2 * gamma0 ** 2 + 0.18D2 * mu0 &
+            * x ** 4 * gamma0 ** 2 - 0.14D2 * mu0 * x ** 4 * gamma0 - 0.6D1 * &
+            mu0 * x ** 6 * gamma0 + 0.6D1 * mu0 * x ** 6 * gamma0 ** 2 - 0.12D2 &
+            * Pr0 * x ** 8 * gamma0 - 0.3D1 * Pr0 * x ** 10 * gamma0 - 0.2D1 &
+            * Pr0 * gamma0 + 0.3D1 * Pr0 * x ** 2 + 0.12D2 * Pr0 * x ** 4 + &
+            0.18D2 * Pr0 * x ** 6 + 0.8D1 * y ** 2 * Pr0 - 0.12D2 * mu0 * Pr0 & 
+            - 0.6D1 * mu0 * gamma0 + 0.6D1 * mu0 * gamma0 ** 2 + 0.12D2 * Pr0 & 
+            * x ** 8 + 0.3D1 * Pr0 * x ** 10 - 0.2D1 * mu0 * cg * Pr0) / Pr0 / &
+            (gamma0 - 0.1D1) / (0.1D1 + x ** 2) ** 3
+
+    end do
+
+    ! done here
+  end subroutine comp_elem_source_term_viscous
 
 end module element_opt_dg2d
