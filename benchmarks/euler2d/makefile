@@ -14,18 +14,18 @@ VPATH = ./:../../src:
 ## NOTE!!! Now select your compiler from below 
 ### compiler
 # F90 = /usr/bin/gfortran
-# F90 = /opt/gcc/bin/gfortran
+F90 = /opt/gcc/bin/gfortran
 # F90 = /home/aghasemi/gcc-trunk/bin/gfortran
 CC = cc
 # CC = icc
 ##F90 = gfortran
-F90 = ifort
+# F90 = ifort
 # COMMONFLAGS  =  -fbounds-check -Wall -Wconversion -Wunderflow -L $(LIBS) -I $(INCS)
 # COMMONFLAGS  =  -O3 -L $(LIBS) -I $(INCS)
 # COMMONFLAGS  = -O3
-COMMONFLAGS  = -check all -g 
+# COMMONFLAGS  = -check all -g 
 CCOMPILEFLAGS  =  -c 
-##COMMONFLAGS  = 
+COMMONFLAGS  = 
 ##COMMONFLAGS  =  -O3 -check all 
 # COMMONFLAGS  =  -O3 -parallel  
 # COMMONFLAGS  =  -O3 -xHost -ipo

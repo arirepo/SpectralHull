@@ -81,7 +81,7 @@ module element_opt_dg2d
      ! (1..npe, 1..ngauss, 1..2)
      real*8, dimension(:, :, :), allocatable, public :: d_psi_d_x
      ! fluxes evaluated at Gauss points (1..neqs, 1..ngauss, 1..2) 
-     real*8, dimension(:, :, :), allocatable :: Fk
+     real*8, dimension(:, :, :), allocatable, public :: Fk
      real*8, public :: coeff
      ! pure flux jac. evaluated at Gauss points (1..neqs, 1..neqs, 1..ngauss, 1..2) 
      real*8, dimension(:, :, :, :), allocatable, public :: dFk
@@ -1230,6 +1230,7 @@ if (elem%number .eq. 4) print *, 'xso = ', x, 'yso = ', y
 
     end do
 
+print *, 'gulgulsource', elem%local_props%lambda, elem%local_props%mu, elem%local_props%Pr
     ! done here
   end subroutine comp_elem_source_term_viscous
 

@@ -72,6 +72,12 @@ contains
     ! allocate all elements in the workspace
     allocate(wspace%elems(wspace%grd%ncellsg))
 
+    wspace%elems(:)%local_props%is_viscous = tprops%is_viscous
+    wspace%elems(:)%local_props%mu = tprops%mu
+    wspace%elems(:)%local_props%lambda = tprops%lambda
+    wspace%elems(:)%local_props%Pr = tprops%Pr
+    wspace%elems(:)%local_props%adia = tprops%adia
+
     ! proceed to initialize the elements one by one
     do i = 1, size(wspace%elems)
        call wspace%elems(i)%init(wspace%elems(i) &
@@ -97,12 +103,6 @@ contains
           call wspace%init_edg_quadrat(wspace%elems(i), j, tol)
        end do
     end do
-
-    wspace%elems(:)%local_props%is_viscous = tprops%is_viscous
-    wspace%elems(:)%local_props%mu = tprops%mu
-    wspace%elems(:)%local_props%lambda = tprops%lambda
-    wspace%elems(:)%local_props%Pr = tprops%Pr
-    wspace%elems(:)%local_props%adia = tprops%adia
 
     ! done here
   end subroutine init_wspace
@@ -452,7 +452,7 @@ UR = UL
   !        elem%U before this.
   subroutine comp_elem_rhs(wspace, elem, rhs)
     implicit none
-    class(dg_wspace), intent(in) :: wspace
+    class(dg_wspace), intent(inout) :: wspace
     class(element_dg2d), intent(inout), target :: elem
     real*8, dimension(:, :), intent(out) :: rhs
 
@@ -468,10 +468,12 @@ UR = UL
     ! compute interior fluxes
     call elem%comp_flux_interior()
 
+print *, 'gulgulFk', elem%Fk
     ! accumulate interior integral to rhs
     ! comp_inter_integral(elem, integ)
     call elem%comp_int_integ(tmp)
     rhs = rhs + tmp
+print *, 'gulgulFktmp', rhs
 
     ! compute boundary integral
     tmp = 0.0d0
@@ -562,15 +564,22 @@ UR = UL
        if ( all(wspace%elems(:)%local_props%is_viscous) ) then
           print *, 'compute grad of U at iteration ', itr
           call comp_Wij(wspace)
+
+          ! ! echo
+          ! do i = 1, size(wspace%elems) 
+          !    print *, 'gulgul element # ', i, 'Wij = ', minval(wspace%elems(i)%Wij)
+          ! end do
+          ! stop
        end if
 
        ! loop over all elements and find rhs
        do i = 1, size(wspace%elems) 
           ! compute rhs
           call wspace%comp_elem_rhs(wspace%elems(i), wspace%elems(i)%rhs)
-          print*, 'element#', i, maxval(abs(wspace%elems(i)%rhs))
+          print*, 'gulrhs element#', i,  'RHS = ', wspace%elems(i)%rhs(4, :)
 
        end do
+       ! stop
 
        do i = 1, size(wspace%elems) 
           ! write rhs to U for visualization

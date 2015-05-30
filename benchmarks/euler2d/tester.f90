@@ -15,8 +15,8 @@ program benchmark_geom
   type(dg_wspace) :: wspace
   integer, dimension(:), allocatable :: pin, eltypein
   real*8 :: tolerance, gamma0, rho0, u0, v0, P0
-  real*8, dimension(4, 4) :: bc_vals0
-  character(len = 128), dimension(4) :: bc_names0
+  real*8, dimension(4, 8) :: bc_vals0
+  character(len = 128), dimension(8) :: bc_names0
   real*8, dimension(:, :), allocatable :: utmp
   type(fem_struct) :: tfem
   type(phys_props) :: tprops
@@ -29,11 +29,14 @@ program benchmark_geom
   ! call trigen_based_TETREX('../../geom/cylinder_euler_tetrex.grd', wspace%grd)
   !call trigen_based_TETREX('../../geom/naca0012_euler_tetrex.grd', wspace%grd)
   ! call read_segment_file('../../geom/coarse_cylinder_tri2.dat', 'parabolic', wspace%grd)
+!  call read_segment_file('../../geom/box_box.dat', 'parabolic', wspace%grd)
+  call read_segment_file('../../geom/1box.dat', 'parabolic', wspace%grd)
+
   ! call read_segment_file('../../geom/small_cylinder.dat', 'parabolic', wspace%grd)
-  call read_segment_file('../../geom/mms_square.dat', 'parabolic', wspace%grd)
+  ! call read_segment_file('../../geom/mms_square.dat', 'parabolic', wspace%grd)
 
   ! call read_segment_file('../../geom/chambered_airfoil.dat', 'parabolic', wspace%grd)
-  call trigen('pnq30.0jY', wspace%grd)
+  call trigen('pnq36.0jY', wspace%grd)
   ! call trigen('pnq36.1jY', wspace%grd)
 
 ! print grid properties
@@ -47,8 +50,8 @@ program benchmark_geom
 ! stop
   ! proceed to add higher order points
   allocate( pin(wspace%grd%ntri), eltypein(wspace%grd%ntri) )
-  pin = 4
-  eltypein = 0
+  pin = 6
+  eltypein = 1
   tolerance = 1.0d-13
 !    pin(4) = 3
 ! eltypein(4) = 1
@@ -81,6 +84,10 @@ program benchmark_geom
   bc_names0(2) = 'outflow'
   bc_names0(3) = 'outflow'
   bc_names0(4) = 'outflow'
+  bc_names0(5) = 'outflow'
+  bc_names0(6) = 'outflow'
+  bc_names0(7) = 'outflow'
+  bc_names0(8) = 'outflow'
 
   ! bc_names0(1) = 'wall'
   ! bc_names0(2) = 'wall'
@@ -94,7 +101,7 @@ program benchmark_geom
 
   ! init workspace
   tprops%is_viscous = .true.
-  tprops%mu = 0.0001d0
+  tprops%mu = 1.d0
   tprops%lambda = -2.0d0/ 3.0d0
   tprops%Pr = 0.71d0
   tprops%adia = .true.

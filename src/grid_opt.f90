@@ -6,7 +6,7 @@ module grid_opt
   use quadri_elem
   use approx_fekete, only : fekete_table
 
-  use ifport
+  ! use ifport
 
   ! performs grid operations
   !    read
