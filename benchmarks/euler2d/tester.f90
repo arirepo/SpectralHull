@@ -21,14 +21,14 @@ program benchmark_geom
 
   ! grid generation
   ! call read_segment_file('../../geom/naca0012_euler.dat', 'parabolic', wspace%grd)
-  ! call read_segment_file('../../geom/cylinder_euler_tetrex.dat', 'parabolic', wspace%grd)
-  !call read_segment_file('../../geom/naca0012_euler_tetrex.dat', 'parabolic', wspace%grd)
+  call read_segment_file('../../geom/cylinder_euler_tetrex.dat', 'parabolic', wspace%grd)
+  ! call read_segment_file('../../geom/naca0012_euler_tetrex.dat', 'parabolic', wspace%grd)
   ! call trigen('pnq32.0jY', wspace%grd)
-  ! call trigen_based_TETREX('../../geom/cylinder_euler_tetrex.grd', wspace%grd)
+  call trigen_based_TETREX('../../geom/cylinder_euler_tetrex.grd', wspace%grd)
   !call trigen_based_TETREX('../../geom/naca0012_euler_tetrex.grd', wspace%grd)
-  call read_segment_file('../../geom/coarse_cylinder_tri2.dat', 'parabolic', wspace%grd)
+  ! call read_segment_file('../../geom/coarse_cylinder_tri2.dat', 'parabolic', wspace%grd)
   ! call read_segment_file('../../geom/chambered_airfoil.dat', 'parabolic', wspace%grd)
-  call trigen('pnq34.0jY', wspace%grd)
+  ! call trigen('pnq34.0jY', wspace%grd)
   ! call trigen('pnq36.1jY', wspace%grd)
 
 ! print grid properties
@@ -95,8 +95,10 @@ program benchmark_geom
   call wspace%init_field(rho0, u0, v0, P0)
 
   ! march only one time step
-  ! call wspace%march_field(dt = 1.0d-5, itrs = 5000)
-  call wspace%march_euler_implicit(dt = 4.0d-3, itrs = 100, inewtons = 2, num = 20, nrst = 1, epsil = 1.d-14)
+  ! call wspace%march_field(dt = 1.0d-4, itrs = 300)
+  call wspace%tvd_rk(dt = 1.0d-4, itrs = 300)
+
+  ! call wspace%march_euler_implicit(dt = 4.0d-3, itrs = 100, inewtons = 2, num = 20, nrst = 1, epsil = 1.d-14)
 ! print *, 'heyhey'
   ! call wspace%march_field(dt = 1.0d-4, itrs = 30000)
 

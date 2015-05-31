@@ -36,6 +36,7 @@ module dg_workspace
      procedure, public :: comp_jac_bnd_integral
      procedure, public :: comp_full_Ax
      procedure, public :: march_euler_implicit
+     procedure, public :: tvd_rk
   
   end type dg_wspace
 
@@ -1411,5 +1412,74 @@ print *, 'itr = ', itr
     ! done here
   end subroutine solve_prec_elemental
 
+  subroutine tvd_rk(wspace, dt, itrs)
+    implicit none
+    class(dg_wspace), intent(inout) :: wspace
+    real*8, intent(in) :: dt
+    integer, intent(in) :: itrs
+
+    ! local vars
+    integer :: itr, i
+
+    do itr = 1, itrs ! time step loop
+
+
+       do i = 1, size(wspace%elems) 
+          ! first take a copy and store in Un
+          wspace%elems(i)%Un = wspace%elems(i)%U 
+       !end do
+
+       ! loop over all elements and find rhs
+       !do i = 1, size(wspace%elems) 
+          ! compute rhs
+          call wspace%comp_elem_rhs(wspace%elems(i), wspace%elems(i)%rhs)
+       end do
+
+       ! then compute dt*M^-1*rhs and update Urk1
+       do i = 1, size(wspace%elems) 
+          call wspace%elems(i)%comp_dt_Minv_rhs(wspace%elems(i)%rhs &
+               , dt)
+          wspace%elems(i)%Urk(:,:,1) = wspace%elems(i)%Un + &
+               wspace%elems(i)%rhs 
+          wspace%elems(i)%U = wspace%elems(i)%Urk(:,:,1) ! update U too
+       end do
+
+       ! loop over all elements and find rhs
+       do i = 1, size(wspace%elems) 
+          ! compute rhs
+          call wspace%comp_elem_rhs(wspace%elems(i), wspace%elems(i)%rhs)
+       end do
+
+       ! then compute dt*M^-1*rhs and update Urk2
+       do i = 1, size(wspace%elems) 
+          call wspace%elems(i)%comp_dt_Minv_rhs(wspace%elems(i)%rhs &
+               , dt)
+          wspace%elems(i)%Urk(:,:,2) = 3.0d0/ 4.0d0 * wspace%elems(i)%Un + &
+               1.0d0 / 4.0d0 * (wspace%elems(i)%Urk(:,:,1) + wspace%elems(i)%rhs) 
+          wspace%elems(i)%U = wspace%elems(i)%Urk(:,:,2) ! update U too
+       end do
+
+       ! loop over all elements and find rhs
+       do i = 1, size(wspace%elems) 
+          ! compute rhs
+          call wspace%comp_elem_rhs(wspace%elems(i), wspace%elems(i)%rhs)
+       end do
+
+       ! then compute dt*M^-1*rhs and update final elem%U
+       do i = 1, size(wspace%elems) 
+          call wspace%elems(i)%comp_dt_Minv_rhs(wspace%elems(i)%rhs &
+               , dt)
+          wspace%elems(i)%U = 1.0d0/ 3.0d0 * wspace%elems(i)%Un + &
+               2.0d0 / 3.0d0 * (wspace%elems(i)%Urk(:,:,2) + wspace%elems(i)%rhs) 
+       end do
+
+
+       ! show progress
+       print *, 'itr = ', itr
+
+    end do
+
+    ! done here
+  end subroutine tvd_rk
 
 end module dg_workspace

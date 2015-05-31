@@ -63,7 +63,8 @@ module element_opt_dg2d
      ! the pivot matrix (neqs * npe)
      integer, dimension(:), allocatable, public :: IPIVmass, IPIVmass_imp
      ! elemental solution : Uij (i=1,neqs <> j=1,npe) 
-     real*8, dimension(:, :), allocatable, public :: U, Us, rhs, So
+     real*8, dimension(:, :), allocatable, public :: U, Us, rhs, So, Un
+     real*8, dimension(:, :, :), allocatable, public :: Urk ! (neqs, npe, RKstages)
      ! physical derivatives of basis functions at Gauss points
      ! (1..npe, 1..ngauss, 1..2)
      real*8, dimension(:, :, :), allocatable, public :: d_psi_d_x
@@ -97,6 +98,7 @@ module element_opt_dg2d
      procedure, public :: init_mms => init_elem_mms
      procedure, public :: comp_pure_flux_jac => comp_pure_flux_jac_interior
      procedure, public :: comp_int_jac_integ => comp_inter_jac_integral
+     procedure, public :: comp_dt_Minv_rhs
 
   end type element_dg2d
 
@@ -188,6 +190,14 @@ contains
           if ( allocated(elem%So) ) deallocate(elem%So)
           allocate(elem%So(neqs, elem%ngauss))
           elem%So = 0.0d0
+
+          if ( allocated(elem%Un) ) deallocate(elem%Un)
+          allocate(elem%Un(neqs, npe))
+          elem%Un = 0.0d0
+
+          if ( allocated(elem%Urk) ) deallocate(elem%Urk)
+          allocate(elem%Urk(neqs, npe, 2))
+          elem%Urk = 0.0d0
 
           if ( allocated(elem%U0) ) deallocate(elem%U0)
           allocate(elem%U0(neqs, npe))
@@ -885,5 +895,47 @@ if (elem%number .eq. 4) print *, 'xso = ', x, 'yso = ', y
 
     ! done here
   end subroutine comp_inter_jac_integral
+
+  ! computes dt * M^-1 * rhs and stores the results
+  ! in rhs itself
+  !
+  ! used in TVD-RK scheme
+  !  
+  subroutine comp_dt_Minv_rhs(elem, rhs, dt)
+    implicit none
+    class(element_dg2d), intent(inout) :: elem
+    real*8, dimension(:, :), intent(inout) :: rhs
+    real*8, intent(in) :: dt
+
+    ! local vars
+    integer :: N, INFO
+    real*8, dimension(:, :), allocatable :: rhs_lapack, rhs_new
+
+    ! init
+    N = elem%neqs * elem%npe
+    allocate(rhs_lapack(N, 1))
+    allocate(rhs_new(elem%neqs, elem%npe))
+
+    ! solve using already stored LU
+    rhs_lapack = reshape(rhs, (/ N, 1 /) )
+
+    CALL DGETRS( 'No transpose', N, 1, elem%LUmass &
+         , N, elem%IPIVmass, rhs_lapack, N, INFO )
+
+    if ( INFO .ne. 0) then
+       print *, 'something is wrong in LU solve in TVDRK update! stop'
+       stop
+    end if
+
+    rhs_new = reshape( rhs_lapack, (/ elem%neqs, elem%npe /))
+
+    ! update
+    rhs = dt * rhs_new   
+
+    ! clean ups
+    deallocate(rhs_lapack, rhs_new)
+
+    ! done here
+  end subroutine comp_dt_Minv_rhs
 
 end module element_opt_dg2d
