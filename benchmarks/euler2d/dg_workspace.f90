@@ -3,6 +3,7 @@ module dg_workspace
   use euler2d_eqs
   use spline
   use element_opt_dg2d
+!$  use omp_lib
   implicit none
 
   private
@@ -400,8 +401,8 @@ contains
     ! local vars
     integer :: iedg, ineigh
     real*8, dimension(size(rhs, 1), size(rhs, 2)) :: tmp
-    type(edg_dg), pointer :: tedg => null()
-    type(neigh_dg), pointer :: tneigh => null()
+    ! type(edg_dg), pointer :: tedg => null()
+    ! type(neigh_dg), pointer :: tneigh => null()
 
     ! HARD reset
     rhs = 0.0d0
@@ -418,19 +419,19 @@ contains
     tmp = 0.0d0
     do iedg = 1, elem%nedgs ! loop over edges
 
-       tedg => elem%edgs(iedg) !pick this edge
+       ! tedg => elem%edgs(iedg) !pick this edge
 ! print *, 'iedg = ', iedg
 
-       do ineigh = 1, size(tedg%neighs) ! loop over neigh segments on that edge
+       do ineigh = 1, size(elem%edgs(iedg)%neighs) ! loop over neigh segments on that edge
 
-          tneigh => tedg%neighs(ineigh) ! pick this neighboring segment
+          ! tneigh => elem%edgs(iedg)%neighs(ineigh) ! pick this neighboring segment
 
           ! first compute the edge flux per that neigh segment
-          call wspace%comp_Fstar(elem, tedg, tneigh)
+          call wspace%comp_Fstar(elem, elem%edgs(iedg), elem%edgs(iedg)%neighs(ineigh))
 
           ! then compute boundary integral over that little segment
           ! and accumulate to tmp
-          call elem%comp_bnd_integ(tneigh, tmp) 
+          call elem%comp_bnd_integ(elem%edgs(iedg)%neighs(ineigh), tmp) 
 ! print *, 'tmp = ', tmp
 ! print *, 'tneigh%Fstar = ', tneigh%Fstar
        end do !segments per that edge
@@ -1420,64 +1421,85 @@ print *, 'itr = ', itr
 
     ! local vars
     integer :: itr, i
+!$  integer :: nthreads
+
+!$  nthreads = 160
+!$  call OMP_SET_NUM_THREADS(nthreads)
+!$omp parallel shared(wspace,dt)
 
     do itr = 1, itrs ! time step loop
 
-
+!$omp do
        do i = 1, size(wspace%elems) 
           ! first take a copy and store in Un
           wspace%elems(i)%Un = wspace%elems(i)%U 
-       !end do
-
-       ! loop over all elements and find rhs
-       !do i = 1, size(wspace%elems) 
           ! compute rhs
           call wspace%comp_elem_rhs(wspace%elems(i), wspace%elems(i)%rhs)
-       end do
 
-       ! then compute dt*M^-1*rhs and update Urk1
-       do i = 1, size(wspace%elems) 
+          ! then compute dt*M^-1*rhs and update Urk1
           call wspace%elems(i)%comp_dt_Minv_rhs(wspace%elems(i)%rhs &
                , dt)
           wspace%elems(i)%Urk(:,:,1) = wspace%elems(i)%Un + &
                wspace%elems(i)%rhs 
+       end do
+!$omp end do
+
+!$omp do
+       do i = 1, size(wspace%elems) 
           wspace%elems(i)%U = wspace%elems(i)%Urk(:,:,1) ! update U too
        end do
+!$omp end do
+
 
        ! loop over all elements and find rhs
+!$omp do
        do i = 1, size(wspace%elems) 
           ! compute rhs
           call wspace%comp_elem_rhs(wspace%elems(i), wspace%elems(i)%rhs)
-       end do
 
-       ! then compute dt*M^-1*rhs and update Urk2
-       do i = 1, size(wspace%elems) 
+          ! then compute dt*M^-1*rhs and update Urk2
           call wspace%elems(i)%comp_dt_Minv_rhs(wspace%elems(i)%rhs &
                , dt)
           wspace%elems(i)%Urk(:,:,2) = 3.0d0/ 4.0d0 * wspace%elems(i)%Un + &
                1.0d0 / 4.0d0 * (wspace%elems(i)%Urk(:,:,1) + wspace%elems(i)%rhs) 
+       end do
+!$omp end do
+
+!$omp do
+       do i = 1, size(wspace%elems) 
           wspace%elems(i)%U = wspace%elems(i)%Urk(:,:,2) ! update U too
        end do
+!$omp end do
+
 
        ! loop over all elements and find rhs
+!$omp do
        do i = 1, size(wspace%elems) 
           ! compute rhs
           call wspace%comp_elem_rhs(wspace%elems(i), wspace%elems(i)%rhs)
-       end do
 
-       ! then compute dt*M^-1*rhs and update final elem%U
-       do i = 1, size(wspace%elems) 
+          ! then compute dt*M^-1*rhs and update final elem%U
           call wspace%elems(i)%comp_dt_Minv_rhs(wspace%elems(i)%rhs &
                , dt)
+       end do
+!$omp end do
+
+!$omp do
+       do i = 1, size(wspace%elems) 
           wspace%elems(i)%U = 1.0d0/ 3.0d0 * wspace%elems(i)%Un + &
                2.0d0 / 3.0d0 * (wspace%elems(i)%Urk(:,:,2) + wspace%elems(i)%rhs) 
        end do
+!$omp end do
 
 
+!$omp single
        ! show progress
        print *, 'itr = ', itr
+!$omp end single
 
     end do
+
+!$omp end parallel
 
     ! done here
   end subroutine tvd_rk

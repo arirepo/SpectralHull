@@ -312,7 +312,7 @@ contains
     ! 
     print *, 'total boundary segments from CAD : ', grd%tot_bn_seg
     print *, 'total repeated boundary nodes : ', grd%tot_repeated_bn_nodes
-    print *, 'dup_nodes = [', grd%dup_nodes , ']'
+    ! print *, 'dup_nodes = [', grd%dup_nodes , ']'
 
     ! print el2bn
     do i = 1, grd%ncellsg

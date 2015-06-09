@@ -326,16 +326,16 @@ contains
 
     ! first fill this%M0 column vector with
     ! pascal terms at point (x0, y0) according to the requested operation
-    call this%eval_M_pt(x0, y0, this%d, op, this%M0(:,1))
+    call this%eval_M_pt(x0, y0, this%d, op, val)
 
     ! solve psi = basis = MT\M0 using already computed LU
-    CALL DGETRS( 'No transpose', id, 1, this%MT, id, this%piv, this%M0, id, INFO )
+    CALL DGETRS( 'No transpose', id, 1, this%MT, id, this%piv, val, id, INFO )
     if ( INFO .ne. 0) then
        print *, 'could not solve to evaluate basis at point (x0, y0)'
        stop
     end if
 
-    val = this%M0(:,1)
+    ! val = this%M0(:,1)
 
     ! done here
   end subroutine evaluate

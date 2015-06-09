@@ -6,7 +6,7 @@ VPATH = ./:../../src:
 %.o: %.f90
 	$(F90) $(COMPFLAGS) $^ -o $@
 %.o: %.f
-	$(F90) -c $^ -o $@
+	$(F77) -c  $(OMP_FLAGS) $^ -o $@
 %.o: %.c
 	$(CC) $(CCOMPILEFLAGS) $^ -o $@ 
 ###############################################
@@ -14,26 +14,33 @@ VPATH = ./:../../src:
 ## NOTE!!! Now select your compiler from below 
 ### compiler
 # F90 = /usr/bin/gfortran
-F90 = /opt/gcc/bin/gfortran
+# F90 = /opt/gcc/bin/gfortran
 # F90 = /home/aghasemi/gcc-trunk/bin/gfortran
-CC = cc
+F90 = /usr/local/gcc-5-20150306/bin/gfortran
+F77 = $(F90)
+#CC = cc
+CC = /usr/local/gcc-5-20150306/bin/gcc
 # CC = icc
 ##F90 = gfortran
 # F90 = ifort
 # COMMONFLAGS  =  -fbounds-check -Wall -Wconversion -Wunderflow -L $(LIBS) -I $(INCS)
 # COMMONFLAGS  =  -O3 -L $(LIBS) -I $(INCS)
 # COMMONFLAGS  = -O3
-COMMONFLAGS  = 
-CCOMPILEFLAGS  =  -c 
+# COMMONFLAGS  = 
+# CCOMPILEFLAGS  =  -c 
+COMMONFLAGS  = $(OMP_FLAGS) -O3 
+CCOMPILEFLAGS  =  -c $(OMP_FLAGS) 
 ##COMMONFLAGS  = 
 ##COMMONFLAGS  =  -O3 -check all 
 # COMMONFLAGS  =  -O3 -parallel  
-# COMMONFLAGS  =  -O3 -xHost -ipo
+# COMMONFLAGS  =  $(OMP_FLAGS) -O3 -xHost -ipo
 COMPFLAGS    =  -c  $(COMMONFLAGS)
 LIBS    = 
 INCS    = 
 LINKFLAGS    =      $(COMMONFLAGS) 
-LINK_SUFFIX  =     -llapack -lblas
+# LINK_SUFFIX  =     -llapack -lblas
+LINK_SUFFIX  =   -L/home/aghasemi/blueprint_lapack/gfort_lapack/lapack-3.5.0 -llapack -lblas 
+OMP_FLAGS = -fopenmp
 
 ## NOTE!!! Now add your object files that you need for 
 #          your test case problem. 

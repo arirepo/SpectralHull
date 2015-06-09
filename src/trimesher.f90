@@ -21,11 +21,14 @@ module trimesher
        ! inputs
        character (c_char) :: cmd_arg_string(*)
        integer (c_int), value :: numberofpoints
-       real (c_double) :: pointlist(2*numberofpoints)
+       ! real (c_double) :: pointlist(2*numberofpoints)
+       real (c_double) :: pointlist(*)
        integer (c_int), value :: numberofsegments 
-       integer (c_int) :: segmentlist(2*numberofsegments), segmentmarkerlist(numberofsegments)
+       ! integer (c_int) :: segmentlist(2*numberofsegments), segmentmarkerlist(numberofsegments)
+       integer (c_int) :: segmentlist(*), segmentmarkerlist(*)
        integer (c_int), value :: numberofholes
-       real (c_double) :: holelist(2*numberofholes)
+       ! real (c_double) :: holelist(2*numberofholes)
+       real (c_double) :: holelist(*)
        integer (c_int), value :: report_before, report_after
        integer(c_int), value :: default_numberofpoints
        integer(c_int), value :: default_numberoftriangles
@@ -33,14 +36,19 @@ module trimesher
 
        ! outputs
        integer(c_int) :: new_numberofpoints
-       real(c_double) :: new_pointlist(2 * default_numberofpoints)
+       ! real(c_double) :: new_pointlist(2 * default_numberofpoints)
+       real(c_double) :: new_pointlist(*)
        integer(c_int) :: numberoftriangles
        integer(c_int) :: numberofcorners
-       integer(c_int) :: trianglelist(default_numberoftriangles*3)
-       integer(c_int) :: neighborlist(default_numberoftriangles*3)
+       ! integer(c_int) :: trianglelist(default_numberoftriangles*3)
+       integer(c_int) :: trianglelist(*)
+       ! integer(c_int) :: neighborlist(default_numberoftriangles*3)
+       integer(c_int) :: neighborlist(*)
        integer(c_int) :: new_numberofsegments
-       integer(c_int) :: new_segmentlist(2*default_numberofsegments)
-       integer(c_int) :: new_segmentmarkerlist(default_numberofsegments)
+       ! integer(c_int) :: new_segmentlist(2*default_numberofsegments)
+       integer(c_int) :: new_segmentlist(*)
+       ! integer(c_int) :: new_segmentmarkerlist(default_numberofsegments)
+       integer(c_int) :: new_segmentmarkerlist(*)
 
      end subroutine trimesh
 
@@ -86,18 +94,31 @@ contains
 
     ! outputs
     integer(c_int) :: new_numberofpoints
-    real(c_double) :: new_pointlist(2 * default_numberofpoints)
+    ! real(c_double) :: new_pointlist(2 * default_numberofpoints)
+    real(c_double), allocatable :: new_pointlist(:)
     integer(c_int) :: numberoftriangles
     integer(c_int) :: numberofcorners
-    integer(c_int) :: trianglelist(default_numberoftriangles*3)
-    integer(c_int) :: neighborlist(default_numberoftriangles*3)
+    ! integer(c_int) :: trianglelist(default_numberoftriangles*3)
+    ! integer(c_int) :: neighborlist(default_numberoftriangles*3)
+    integer(c_int), allocatable :: trianglelist(:)
+    integer(c_int), allocatable :: neighborlist(:)
     integer(c_int) :: new_numberofsegments
-    integer(c_int) :: new_segmentlist(2*default_numberofsegments)
-    integer(c_int) :: new_segmentmarkerlist(default_numberofsegments)
+    ! integer(c_int) :: new_segmentlist(2*default_numberofsegments)
+    ! integer(c_int) :: new_segmentmarkerlist(default_numberofsegments)
+    integer(c_int), allocatable :: new_segmentlist(:)
+    integer(c_int), allocatable :: new_segmentmarkerlist(:)
 
     ! indices
     integer :: ii, telem
     integer :: npe, nped
+
+    ! HEAP allocation
+    allocate(new_pointlist(2 * default_numberofpoints))
+    allocate(trianglelist(default_numberoftriangles*3))
+    allocate(neighborlist(default_numberoftriangles*3))
+    allocate(new_segmentlist(2*default_numberofsegments))
+    allocate(new_segmentmarkerlist(default_numberofsegments))
+
 
     ! initialization
     cmd_arg_string = cmd_arg_string_in//C_NULL_CHAR 
@@ -283,6 +304,19 @@ contains
     end if
 
     grd%galtype = 'PG' !Petrov-Galerkin by default
+
+    ! final clean ups
+    ! HEAP deallocation
+    if (allocated(new_pointlist)) deallocate(new_pointlist)
+    if (allocated(trianglelist)) deallocate(trianglelist)
+    if (allocated(neighborlist)) deallocate(neighborlist)
+    if (allocated(new_segmentlist)) deallocate(new_segmentlist)
+    if (allocated(new_segmentmarkerlist)) deallocate(new_segmentmarkerlist)
+
+    if (allocated(pointlist)) deallocate(pointlist)
+    if (allocated(segmentlist)) deallocate(segmentlist)
+    if (allocated(segmentmarkerlist)) deallocate(segmentmarkerlist)
+    if (allocated(holelist)) deallocate(holelist)
 
     ! done here
   end subroutine meshit

@@ -103,7 +103,7 @@ program benchmark_geom
 
   ! march only one time step
   ! call wspace%march_field(dt = 1.0d-4, itrs = 300)
-  call wspace%tvd_rk(dt = 1.0d-4, itrs = 5000)
+  call wspace%tvd_rk(dt = 1.0d-4, itrs = 100)
 
   ! call wspace%march_euler_implicit(dt = 4.0d-3, itrs = 100, inewtons = 2, num = 20, nrst = 1, epsil = 1.d-14)
 ! print *, 'heyhey'
