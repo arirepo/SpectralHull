@@ -10,7 +10,7 @@ program benchmark_geom
   implicit none
 
   ! local vars
-  integer :: i
+  integer :: i, j, tpt
   type(dg_wspace) :: wspace
   integer, dimension(:), allocatable :: pin, eltypein
   real*8 :: tolerance, gamma0, rho0, u0, v0, P0
@@ -18,16 +18,23 @@ program benchmark_geom
   character(len = 128), dimension(7) :: bc_names0
   real*8, dimension(:, :), allocatable :: utmp
   type(fem_struct) :: tfem
+  real*8 :: xx, yy
+  logical :: adp_flag
+  ! for animation
+  character(len = 100) :: anim_name
+  integer :: anim_itr
 
   ! grid generation
   ! call read_segment_file('../../geom/naca0012_euler.dat', 'parabolic', wspace%grd)
   ! call read_segment_file('../../geom/cylinder_euler_tetrex.dat', 'parabolic', wspace%grd)
   ! call read_segment_file('../../geom/naca0012_euler_tetrex.dat', 'parabolic', wspace%grd)
-  call read_segment_file('../../geom/triangle_TETREX.dat', 'parabolic', wspace%grd)
+  ! call read_segment_file('../../geom/triangle_TETREX.dat', 'parabolic', wspace%grd)
+  call read_segment_file('../../geom/triangle_TETREX2.dat', 'parabolic', wspace%grd)
   ! call trigen('pnq32.0jY', wspace%grd)
   ! call trigen_based_TETREX('../../geom/cylinder_euler_tetrex.grd', wspace%grd)
   !call trigen_based_TETREX('../../geom/naca0012_euler_tetrex.grd', wspace%grd)
-  call trigen_based_TETREX('../../geom/triangle_TETREX.grd', wspace%grd)
+  ! call trigen_based_TETREX('../../geom/triangle_TETREX.grd', wspace%grd)
+  call trigen_based_TETREX('../../geom/triangle_TETREX2.grd', wspace%grd)
   ! call read_segment_file('../../geom/coarse_cylinder_tri2.dat', 'parabolic', wspace%grd)
   ! call read_segment_file('../../geom/chambered_airfoil.dat', 'parabolic', wspace%grd)
   ! call read_segment_file('../../geom/triangle.dat', 'parabolic', wspace%grd)
@@ -46,8 +53,30 @@ program benchmark_geom
 ! stop
   ! proceed to add higher order points
   allocate( pin(wspace%grd%ntri), eltypein(wspace%grd%ntri) )
-  pin = 2
+  pin = 3
   eltypein = 0
+
+
+  ! adpat <p> regionally
+  do i = 1, size(wspace%grd%icon, 1) !ncellsg
+
+     adp_flag = .true.
+     do j = 1, size(wspace%grd%icon, 2) !npe
+
+        tpt = wspace%grd%icon(i, j)
+        xx = wspace%grd%x(tpt)
+        yy = wspace%grd%y(tpt)
+        adp_flag = adp_flag .and. (xx >= 0.3d0) .and. (xx <= 2.0d0) .and. (yy >= -0.4d0)  .and. (yy <= 0.4d0)
+     end do
+
+     if (adp_flag ) then
+        pin(i) = 7
+        eltypein(i) = 0
+     end if
+
+  end do
+
+
   tolerance = 1.0d-13
 !    pin(4) = 3
 ! eltypein(4) = 1
@@ -69,10 +98,13 @@ program benchmark_geom
 
   ! DG initialization
   gamma0 = 1.4d0
-  rho0 = 0.1d0
+  ! rho0 = 0.1d0
+  rho0 = 1.0d0
   u0 = 0.2d0
   v0 = 0.0d0
-  P0 = 0.8d0
+  ! P0 = 0.8d0
+  P0 = 1.0d0 / gamma0
+
   do i = 1, 4
      call u2U(rho0, u0, v0, P0, gamma0, bc_vals0(:, i))
   end do
@@ -103,9 +135,18 @@ program benchmark_geom
 
   ! march only one time step
   ! call wspace%march_field(dt = 1.0d-4, itrs = 300)
-  call wspace%tvd_rk(dt = 1.0d-4, itrs = 100)
+  do anim_itr = 1, 400
 
-  ! call wspace%march_euler_implicit(dt = 4.0d-3, itrs = 100, inewtons = 2, num = 20, nrst = 1, epsil = 1.d-14)
+     ! compute the field evolution
+     call wspace%tvd_rk(dt = 1.0d-4, itrs = 500)
+
+     ! make animation
+     write (anim_name, "(A5,I0.3)") "dgvis", anim_itr
+     call vis_curved_grid_dg(wspace, anim_name)
+
+  end do
+  
+! call wspace%march_euler_implicit(dt = 4.0d-3, itrs = 100, inewtons = 2, num = 20, nrst = 1, epsil = 1.d-14)
 ! print *, 'heyhey'
   ! call wspace%march_field(dt = 1.0d-4, itrs = 30000)
 

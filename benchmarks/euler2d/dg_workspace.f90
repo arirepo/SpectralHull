@@ -1423,7 +1423,7 @@ print *, 'itr = ', itr
     integer :: itr, i
 !$  integer :: nthreads
 
-!$  nthreads = 160
+!$  nthreads = 150
 !$  call OMP_SET_NUM_THREADS(nthreads)
 !$omp parallel shared(wspace,dt)
 
@@ -1493,8 +1493,10 @@ print *, 'itr = ', itr
 
 
 !$omp single
+
        ! show progress
        print *, 'itr = ', itr
+
 !$omp end single
 
     end do
