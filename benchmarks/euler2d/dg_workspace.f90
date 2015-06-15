@@ -1421,15 +1421,16 @@ print *, 'itr = ', itr
 
     ! local vars
     integer :: itr, i
-!$  integer :: nthreads
+!$  integer :: nthreads, nchunk
 
-!$  nthreads = 150
+!$  nthreads = 200
+!$  nchunk = 1 !floor(dble(size(wspace%elems)) / dble(nthreads))
 !$  call OMP_SET_NUM_THREADS(nthreads)
 !$omp parallel shared(wspace,dt)
 
     do itr = 1, itrs ! time step loop
 
-!$omp do
+!$omp do SCHEDULE(DYNAMIC,nchunk)
        do i = 1, size(wspace%elems) 
           ! first take a copy and store in Un
           wspace%elems(i)%Un = wspace%elems(i)%U 
@@ -1444,7 +1445,7 @@ print *, 'itr = ', itr
        end do
 !$omp end do
 
-!$omp do
+!$omp do SCHEDULE(DYNAMIC,nchunk)
        do i = 1, size(wspace%elems) 
           wspace%elems(i)%U = wspace%elems(i)%Urk(:,:,1) ! update U too
        end do
@@ -1452,7 +1453,7 @@ print *, 'itr = ', itr
 
 
        ! loop over all elements and find rhs
-!$omp do
+!$omp do SCHEDULE(DYNAMIC,nchunk)
        do i = 1, size(wspace%elems) 
           ! compute rhs
           call wspace%comp_elem_rhs(wspace%elems(i), wspace%elems(i)%rhs)
@@ -1465,7 +1466,7 @@ print *, 'itr = ', itr
        end do
 !$omp end do
 
-!$omp do
+!$omp do SCHEDULE(DYNAMIC,nchunk)
        do i = 1, size(wspace%elems) 
           wspace%elems(i)%U = wspace%elems(i)%Urk(:,:,2) ! update U too
        end do
@@ -1473,7 +1474,7 @@ print *, 'itr = ', itr
 
 
        ! loop over all elements and find rhs
-!$omp do
+!$omp do SCHEDULE(DYNAMIC,nchunk)
        do i = 1, size(wspace%elems) 
           ! compute rhs
           call wspace%comp_elem_rhs(wspace%elems(i), wspace%elems(i)%rhs)
@@ -1484,7 +1485,7 @@ print *, 'itr = ', itr
        end do
 !$omp end do
 
-!$omp do
+!$omp do SCHEDULE(DYNAMIC,nchunk)
        do i = 1, size(wspace%elems) 
           wspace%elems(i)%U = 1.0d0/ 3.0d0 * wspace%elems(i)%Un + &
                2.0d0 / 3.0d0 * (wspace%elems(i)%Urk(:,:,2) + wspace%elems(i)%rhs) 

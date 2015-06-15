@@ -29,12 +29,14 @@ program benchmark_geom
   ! call read_segment_file('../../geom/cylinder_euler_tetrex.dat', 'parabolic', wspace%grd)
   ! call read_segment_file('../../geom/naca0012_euler_tetrex.dat', 'parabolic', wspace%grd)
   ! call read_segment_file('../../geom/triangle_TETREX.dat', 'parabolic', wspace%grd)
-  call read_segment_file('../../geom/triangle_TETREX2.dat', 'parabolic', wspace%grd)
+  ! call read_segment_file('../../geom/triangle_TETREX2.dat', 'parabolic', wspace%grd)
+  call read_segment_file('../../geom/triangle_TETREX3.dat', 'parabolic', wspace%grd)
   ! call trigen('pnq32.0jY', wspace%grd)
   ! call trigen_based_TETREX('../../geom/cylinder_euler_tetrex.grd', wspace%grd)
   !call trigen_based_TETREX('../../geom/naca0012_euler_tetrex.grd', wspace%grd)
   ! call trigen_based_TETREX('../../geom/triangle_TETREX.grd', wspace%grd)
-  call trigen_based_TETREX('../../geom/triangle_TETREX2.grd', wspace%grd)
+  ! call trigen_based_TETREX('../../geom/triangle_TETREX2.grd', wspace%grd)
+  call trigen_based_TETREX('../../geom/triangle_TETREX3.grd', wspace%grd)
   ! call read_segment_file('../../geom/coarse_cylinder_tri2.dat', 'parabolic', wspace%grd)
   ! call read_segment_file('../../geom/chambered_airfoil.dat', 'parabolic', wspace%grd)
   ! call read_segment_file('../../geom/triangle.dat', 'parabolic', wspace%grd)
@@ -70,7 +72,7 @@ program benchmark_geom
      end do
 
      if (adp_flag ) then
-        pin(i) = 7
+        pin(i) = 8
         eltypein(i) = 0
      end if
 
