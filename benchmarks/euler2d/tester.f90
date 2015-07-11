@@ -137,7 +137,7 @@ program benchmark_geom
 
   ! march only one time step
   ! call wspace%march_field(dt = 1.0d-4, itrs = 300)
-  do anim_itr = 1, 400
+  do anim_itr = 1, 10000
 
      ! compute the field evolution
      call wspace%tvd_rk(dt = 1.0d-4, itrs = 500)

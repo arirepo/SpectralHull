@@ -285,7 +285,7 @@ contains
     ! local vars
     integer :: k
     real*8 :: r, s, nx, ny
-    real*8, dimension(elem%neqs) :: UL, UR, FP, FM
+    real*8, dimension(elem%neqs) :: UL, UR, FP, FM, Ughost
     logical, dimension(4) :: f_select
     real*8, dimension(elem%neqs) :: fvl_p, fvl_m
     real*8, dimension(elem%neqs, elem%neqs) :: d_fvl_p, d_fvl_m
@@ -324,7 +324,9 @@ contains
 
        case ('inflow', 'outflow') ! boundary edge; then UR is preset in bcs value
 
-          UR = wspace%bcs(tedg%tag)%val
+call comp_char_bcs_euler2d(UL, wspace%bcs(tedg%tag)%val, elem%gamma, nx, ny, UR)
+
+          ! UR = wspace%bcs(tedg%tag)%val
 ! print *, 'UR = ', UR
 ! stop
        case ('wall')

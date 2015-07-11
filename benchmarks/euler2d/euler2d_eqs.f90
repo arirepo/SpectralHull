@@ -6,6 +6,7 @@ module euler2d_eqs
 
   public :: calc_van_leer, calc_wall_flux, calc_pure_euler2d_flux
   public :: u2U, calc_pure_euler2d_flux_jac
+  public :: comp_char_bcs_euler2d
 
 contains
 
@@ -391,6 +392,209 @@ contains
 
     ! done here
   end subroutine calc_pure_euler2d_flux_jac
+
+  ! compute the value of ghost points (AKA F(-) in DG)
+  ! using freezed LODI characteristic decomposition of
+  ! two dimensional compressible Euler equations.
+  ! 
+  ! The freezed values are evaluated at boundary node 
+  ! current value at the current time step.
+  !
+  ! input 
+  ! Q = [rho, rho * u, rho *v, e] at boundary node
+  !     at the current time step
+  ! Qinf = [rho_inf, rho_inf * u_inf, rho_inf *v_inf, e_inf]
+  !     of the infinity refrence values.
+  ! (nx, ny) = unit outward normal vector
+  ! output
+  ! Qghost = [rho, rho *u, rho *v, e]@ ghost point
+  !
+  subroutine comp_char_bcs_euler2d(Q, Qinf, gamma, nx, ny, Qghost)
+    implicit none
+    real*8, dimension(:), intent(in) :: Q, Qinf
+    real*8, intent(in) :: gamma, nx, ny
+    real*8, dimension(:), intent(out) :: Qghost
+
+    ! local vars
+    real*8, dimension(4) :: uu_in, uu_inf, W_in, W_inf, W_star, Lambda
+    real*8, dimension(4,4) :: L, R
+
+    ! compute primitive vars at interior and inf
+    call Q2q(Q, gamma, uu_in)
+    call Q2q(Qinf, gamma, uu_inf)
+
+
+    ! compute Lambda (eigen values), L (left eigen matrix)
+    ! and R (right eigen matrix) freezed about current state
+    ! at the interior point adjucent to boundary (+).
+    !
+    call comp_euler2d_L_R(uu_in, gamma, nx, ny, Lambda, L, R)
+    W_in = matmul(L, uu_in)
+    W_inf = matmul(L, uu_inf)
+
+    !
+    ! decide on the sign of eigen values 
+    ! how to blend characteristic vars (inlet or outlet)
+    ! and compute the final characteristic vars in the
+    ! STAR region
+    !
+    if ( Lambda(2) .eq. 0.0d0 ) then !tangential flow
+       W_star = (/ W_inf(1), W_inf(2), W_in(3), W_inf(4) /)
+    elseif     ( all(Lambda(2:4) > 0.0d0) .and. (Lambda(1) < 0.0d0 ) ) then 
+       !subsonic outlet
+       W_star = (/ W_inf(1), W_in(2), W_in(3), W_in(4) /)
+    elseif ( (Lambda(2) < 0.0d0) .and. (Lambda(3) > 0.0d0 ) ) then !subsonic inlet
+       W_star = (/ W_inf(1), W_inf(2), W_in(3), W_inf(4) /)
+    elseif ( all(Lambda > 0.0d0) ) then !supersonic outlet
+       W_star = W_in
+    elseif ( all(Lambda < 0.0d0) ) then !supersonic inlet
+       W_star = W_inf
+    else
+       print *, 'could not find the type of inlet/outlet ' &
+            , ' in specifying char-Bcs! stop'
+       print *, 'Lambda = ', Lambda
+       stop
+    end if
+
+    ! multiply by the inverse of left eigen matrix
+    ! to obtain the primitive vars from char vars
+    uu_in = matmul(R, W_star)
+
+    ! check if density or pressure is negative then exit
+    if ( (uu_in(1) <= 0.0d0) .or. (uu_in(4) <= 0.0d0) ) then
+       print *, 'something is wrong in specifying char-BCs because ' &
+            , ' it yeilds negative density or pressure! stop'
+       stop
+    end if
+
+    ! convert primitive to conservative vars and finally
+    ! save them to output values of Ughost
+    ! subroutine u2U(rho, u, v, P, gamma, UU)
+    call u2U(uu_in(1), uu_in(2), uu_in(3), uu_in(4), gamma, Qghost)
+
+    ! done here
+  end subroutine comp_char_bcs_euler2d
+
+  ! converts conservative vars 
+  ! Q = [rho, rho *u, rho *v, e]
+  ! to primitive vars
+  ! qq = [rho, u, v, P]
+  !
+  subroutine Q2q(Q, gamma, qq)
+    implicit none
+    real*8, dimension(:), intent(in) :: Q
+    real*8, intent(in) :: gamma
+    real*8, dimension(:), intent(out) :: qq
+
+    ! local vars
+    real*8 :: rho, u, v, P, e
+
+    ! calculating primitive variables
+    rho = Q(1)
+    u = Q(2) / Q(1)
+    v = Q(3) / Q(1)
+    e = Q(4)
+    P = (gamma - 1.0d0) * e - 0.5d0 * (gamma - 1.0d0) *rho * ( u*u + v*v)
+
+    ! pack and return the values
+    qq(1) = rho
+    qq(2) = u
+    qq(3) = v
+    qq(4) = P
+
+    ! done here
+  end subroutine Q2q
+
+  ! compute the left and right eigen matrix
+  ! of the two dimensional compressible euler
+  ! equations in primitive form
+  ! 
+  ! input  : 
+  ! uu = [rho, u, v, P]^T vector of primitive vars
+  ! output :
+  ! L  = left eigen matrix
+  ! R = right eigen matrix; R*L = L*R = I (when nx^2+ny^2=1)
+  !
+  ! Refer to book "I do like CFD" for more info.
+  ! 
+  subroutine comp_euler2d_L_R(uu, gamma, nx, ny, Lambda, L, R)
+    implicit none
+    real*8, dimension(:), intent(in) :: uu
+    real*8, intent(in) :: gamma, nx, ny
+    real*8, dimension(:), intent(out) :: Lambda
+    real*8, dimension(:, :), intent(out) :: L, R
+
+    ! local vars
+    real*8 :: rho, u, v, P, c, lx, ly, qn
+
+    ! bullet proofing ...
+    if ( abs(sqrt(nx**2 + ny**2) - 1.0d0) > 1.0d-15 ) then
+       print *, 'the vector (nx, ny) is not a unit vector! stop'
+       stop
+    end if
+
+    ! assign primitive vars
+    rho = uu(1)
+    u = uu(2)
+    v = uu(3)
+    P = uu(4)
+
+    ! comp c and init
+    c = sqrt(gamma * P / rho)
+    lx = -ny
+    ly = nx
+    qn = u*nx + v*ny
+
+    ! fill Lambda
+    Lambda(1) = qn - c
+    Lambda(2) = qn
+    Lambda(3) = qn + c
+    Lambda(4) = qn
+
+    ! fill L
+    L(1,1) = 0.0d0
+    L(1,2) = -nx * rho / (2.0d0 * c)
+    L(1,3) = -ny * rho / (2.0d0 * c)
+    L(1,4) = 1.0d0 / (2.0d0 * c**2)
+
+    L(2,1) = 1.0d0
+    L(2,2) = 0.0d0
+    L(2,3) = 0.0d0
+    L(2,4) = -1.0d0 / (c**2)
+
+    L(3,1) = 0.0d0
+    L(3,2) = nx * rho / (2.0d0 * c)
+    L(3,3) = ny * rho / (2.0d0 * c)
+    L(3,4) = 1.0d0 / (2.0d0 * c**2)
+
+    L(4,1) = 0.0d0
+    L(4,2) = rho * lx
+    L(4,3) = rho * ly
+    L(4,4) = 0.0d0
+
+    ! fill R
+    R(1,1) = 1.0d0
+    R(1,2) = 1.0d0
+    R(1,3) = 1.0d0
+    R(1,4) = 0.0d0
+
+    R(2,1) = -nx*c / rho
+    R(2,2) = 0.0d0
+    R(2,3) = nx*c / rho
+    R(2,4) = lx / rho
+
+    R(3,1) = -ny*c / rho
+    R(3,2) = 0.0d0
+    R(3,3) = ny*c / rho
+    R(3,4) = ly / rho
+
+    R(4,1) = c*c
+    R(4,2) = 0.0d0
+    R(4,3) = c*c
+    R(4,4) = 0.0d0
+
+    ! done here
+  end subroutine comp_euler2d_L_R
 
 end module euler2d_eqs
 
