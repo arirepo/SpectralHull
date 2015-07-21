@@ -331,6 +331,7 @@ call comp_char_bcs_euler2d(UL, wspace%bcs(tedg%tag)%val, elem%gamma, nx, ny, UR)
 ! stop
        case ('wall')
 
+call comp_weakly_proj_wall_U(UL, elem%gamma, nx, ny, UR)
           ! do nothing for now!
 
        case default
@@ -343,15 +344,15 @@ call comp_char_bcs_euler2d(UL, wspace%bcs(tedg%tag)%val, elem%gamma, nx, ny, UR)
        !        <<< compute Flux procedure >>>
        ! 
        !      special situation : Wall treatment
-       if (wspace%bcs(tedg%tag)%name .eq. 'wall') then
+       ! if (wspace%bcs(tedg%tag)%name .eq. 'wall') then
 
-          call calc_wall_flux(UL, elem%neqs, elem%gamma, nx, ny, fvl_p, d_fvl_p)
+       !    call calc_wall_flux(UL, elem%neqs, elem%gamma, nx, ny, fvl_p, d_fvl_p)
 
-          ! store F+
-          FP = fvl_p
-          FM = 0.0d0
+       !    ! store F+
+       !    FP = fvl_p
+       !    FM = 0.0d0
 
-       else
+       ! else
 
           ! compute F+ using UL
           f_select = (/ .true. , .false., .false., .false. /)
@@ -369,7 +370,7 @@ call comp_char_bcs_euler2d(UL, wspace%bcs(tedg%tag)%val, elem%gamma, nx, ny, UR)
           ! store F-
           FM = fvl_m
 
-       end if
+       ! end if
 
 
        ! store total split flux as the final Rankine–Hugoniot value at Fstar

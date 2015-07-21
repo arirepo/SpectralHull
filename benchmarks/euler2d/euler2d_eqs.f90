@@ -6,7 +6,7 @@ module euler2d_eqs
 
   public :: calc_van_leer, calc_wall_flux, calc_pure_euler2d_flux
   public :: u2U, calc_pure_euler2d_flux_jac
-  public :: comp_char_bcs_euler2d
+  public :: comp_char_bcs_euler2d, comp_weakly_proj_wall_U
 
 contains
 
@@ -595,6 +595,64 @@ contains
 
     ! done here
   end subroutine comp_euler2d_L_R
+
+  subroutine comp_weakly_proj_wall_U(Uin, gamma, nx, ny, Uout)
+    implicit none
+    real*8, dimension(:), intent(in) :: Uin
+    real*8, intent(in) :: gamma, nx, ny
+    real*8, dimension(:), intent(out) :: Uout
+
+    ! local vars
+    real*8 :: rho, P
+    real*8, dimension(size(Uin)) :: qq
+    real*8, dimension(2) :: u0, et, uu
+
+    call Q2q(Uin, gamma, qq)
+
+    rho = qq(1)
+    u0(1) = qq(2)
+    u0(2) = qq(3)
+    P = qq(4)
+
+    et(1) = ny
+    et(2) = -nx
+
+    call comp_projected_wall_vel(u0, et, uu)
+
+    Uout(1) = rho
+    Uout(2) = rho * uu(1)
+    Uout(3) = rho * uu(2)
+    Uout(4) = P / (gamma - 1.0d0) + 0.5d0 *rho * ( uu(1)*uu(1) + uu(2)*uu(2))
+
+    ! done here
+  end subroutine comp_weakly_proj_wall_U
+
+  subroutine comp_projected_wall_vel(u0, et, u)
+    implicit none
+    real*8, dimension(:), intent(in) :: u0, et
+    real*8, dimension(:), intent(out) :: u 
+
+    ! local vars
+    real*8 :: u0_dot_et, norm_A1, norm_A2
+    real*8, dimension(size(u0)) :: A1, A2
+
+
+    u0_dot_et = sum(u0*et)
+
+    A1 = -u0 + u0_dot_et * et
+    A2 = -u0 - u0_dot_et * et
+
+    norm_A1 = sqrt(sum(A1*A1))
+    norm_A2 = sqrt(sum(A2*A2))
+
+    if (norm_A1 < norm_A2 ) then
+       u = u0 + A1
+    else
+       u = u0 + A2
+    end if
+
+    ! done here
+  end subroutine comp_projected_wall_vel
 
 end module euler2d_eqs
 
