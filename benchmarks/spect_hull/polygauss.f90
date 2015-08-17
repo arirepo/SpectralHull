@@ -5,10 +5,10 @@ module polygauss
 
   real*8, parameter :: PI = 4.D0*DATAN(1.D0)
 
-  ! the following two lines are public only when the tester program 
-  ! in this file is active and uncommented otherwise comment them
-  public :: repmat, points2distances, cubature_rules_1D, auto_rotation
-  public :: eval_bench_integ, write_quad_to_file
+  ! ! the following two lines are public only when the tester program 
+  ! ! in this file is active and uncommented otherwise comment them
+  ! public :: repmat, points2distances, cubature_rules_1D, auto_rotation
+  ! public :: eval_bench_integ, write_quad_to_file
 
   ! the following is always public
   public :: polygon_gauss_leg
@@ -797,113 +797,113 @@ contains
 
 end module polygauss
 
-program tester
-  use dispmodule
-  use polygauss
-  implicit none
+! program tester
+!   use dispmodule
+!   use polygauss
+!   implicit none
 
-  integer :: n
-  real*8, dimension(:, :), allocatable :: A, full, B
-  real*8, dimension(:), allocatable :: nodes, weights
-  real*8, dimension(:, :), allocatable :: polygon_bd, polygon_bd_rot
-  real*8, dimension(:), allocatable :: vertex_1, vertex_2
-  real*8, dimension(2, 2) :: rot_matrix
-  real*8 :: rot_angle
-  real*8, dimension(2) :: axis_abscissa
-  real*8, dimension(:), allocatable :: P, Q
-  real*8, dimension(:, :), allocatable :: xyw
+!   integer :: n
+!   real*8, dimension(:, :), allocatable :: A, full, B
+!   real*8, dimension(:), allocatable :: nodes, weights
+!   real*8, dimension(:, :), allocatable :: polygon_bd, polygon_bd_rot
+!   real*8, dimension(:), allocatable :: vertex_1, vertex_2
+!   real*8, dimension(2, 2) :: rot_matrix
+!   real*8 :: rot_angle
+!   real*8, dimension(2) :: axis_abscissa
+!   real*8, dimension(:), allocatable :: P, Q
+!   real*8, dimension(:, :), allocatable :: xyw
 
-  integer :: i, ngauss0
-  real*8, dimension(:), allocatable :: error_i
+!   integer :: i, ngauss0
+!   real*8, dimension(:), allocatable :: error_i
 
-  ! --------- test repmat ---------
-  allocate(A(5, 2), full(10, 4))
-  A = reshape( (/ 0.0d0, 1.0d0, 1.0d0, 0.0d0, 0.0d0 &
-       , 0.0d0, 0.0d0, 1.0d0, 1.0d0, 0.0d0 /), (/ 5, 2 /) )
-  full = repmat(A, 2, 2)
+!   ! --------- test repmat ---------
+!   allocate(A(5, 2), full(10, 4))
+!   A = reshape( (/ 0.0d0, 1.0d0, 1.0d0, 0.0d0, 0.0d0 &
+!        , 0.0d0, 0.0d0, 1.0d0, 1.0d0, 0.0d0 /), (/ 5, 2 /) )
+!   full = repmat(A, 2, 2)
 
-  ! show
-  call disp(A)
-  call disp(full)
+!   ! show
+!   call disp(A)
+!   call disp(full)
 
-  ! --------- test points2distances ---------
-  allocate(B(5,5))
-  B = points2distances(A)
+!   ! --------- test points2distances ---------
+!   allocate(B(5,5))
+!   B = points2distances(A)
 
-  call disp('B = ', B)
+!   call disp('B = ', B)
 
-  ! --------- test cubature rule---------
-  n = 9
-  call cubature_rules_1D(n, nodes, weights)
+!   ! --------- test cubature rule---------
+!   n = 9
+!   call cubature_rules_1D(n, nodes, weights)
 
-  call disp('nodes = ', nodes, DIGMAX = 15)
-  call disp('weights = ', weights, DIGMAX = 15)
-
-
-  ! --------- test auto rotation ---------
-  allocate( polygon_bd (5, 2), polygon_bd_rot(5, 2) )
-  polygon_bd = reshape( (/ 0.0d0, 1.0d0, 1.0d0, 0.0d0, 0.0d0 &
-                         , 0.0d0, 0.0d0, 1.0d0, 1.0d0, 0.0d0 /), (/5, 2 /) )
-
-  call auto_rotation(polygon_bd, vertex_1, vertex_2, polygon_bd_rot &
-       , rot_matrix, rot_angle, axis_abscissa)
-
-  call disp('polygon_bd = ', polygon_bd)
-  call disp('vertex_1 = ', vertex_1)
-  call disp('vertex_2 = ', vertex_2)
-  call disp('polygon_bd_rot = ', polygon_bd_rot)
-  call disp('rot_matrix = ', rot_matrix)
-  print *, 'rot_angle = ', rot_angle 
-  print *, 'axis_abscissa = ', axis_abscissa 
-
-  !
-  ! --------- test final gauss-legendre quad rule ---------
-  !
-  ! simple polygon (quad elem) with automatic rotation
-  polygon_bd = reshape( (/ 0.0d0, 1.0d0, 1.0d0, 0.0d0, 0.0d0 &
-                         , 0.0d0, 0.0d0, 1.0d0, 1.0d0, 0.0d0 /), (/5, 2 /) )
-
-  call polygon_gauss_leg(10, polygon_bd, P, Q, xyw, 1)
-  call disp('xyw_quad = ', xyw)
-  ! further write to file
-  call write_quad_to_file(xyw, 'xyw_quad.dat')
-  deallocate(polygon_bd, P, Q, xyw)
-
-  ! a benchmark convex polygon with automatic rotation
-  allocate(polygon_bd(7, 2))
-  polygon_bd = reshape( (/ 0.1d0, 0.7d0, 1.0d0, 0.75d0, 0.5d0, 0.0d0, 0.1d0 &
-       , 0.0d0, 0.2d0, 0.5d0, 0.85d0, 1.0d0, 0.25d0, 0.0d0 /), (/7, 2 /) )
-
-  call polygon_gauss_leg(50, polygon_bd, P, Q, xyw, 1)
-  call disp('xyw_convex = ', xyw)
-  ! further write to file
-  call write_quad_to_file(xyw, 'xyw_convex.dat')
-  deallocate(polygon_bd, P, Q, xyw)
-
-  ! compute the error
-  allocate(error_i(50))
-  do i = 1, size(error_i) 
-     call eval_bench_integ(N = i, polynum = 2, bench = 4 &
-          , abs_err = error_i(i), option = 1, ngauss = ngauss0, tofile = 1)
-     print *, i, ngauss0, error_i(i)
-  end do
+!   call disp('nodes = ', nodes, DIGMAX = 15)
+!   call disp('weights = ', weights, DIGMAX = 15)
 
 
+!   ! --------- test auto rotation ---------
+!   allocate( polygon_bd (5, 2), polygon_bd_rot(5, 2) )
+!   polygon_bd = reshape( (/ 0.0d0, 1.0d0, 1.0d0, 0.0d0, 0.0d0 &
+!                          , 0.0d0, 0.0d0, 1.0d0, 1.0d0, 0.0d0 /), (/5, 2 /) )
 
-  ! clean ups
-  if ( allocated(A) ) deallocate(A)
-  if ( allocated(full) ) deallocate(full)
-  if ( allocated(B) ) deallocate(B)
-  if ( allocated(nodes) ) deallocate(nodes)
-  if ( allocated(weights) ) deallocate(weights)
-  if ( allocated(polygon_bd) ) deallocate(polygon_bd)
-  if ( allocated(polygon_bd_rot) ) deallocate(polygon_bd_rot)
-  if ( allocated(vertex_1) ) deallocate(vertex_1)
-  if ( allocated(vertex_2) ) deallocate(vertex_2)
-  if ( allocated(P)) deallocate(P)
-  if ( allocated(Q)) deallocate(Q)
-  if ( allocated(xyw)) deallocate(xyw)
-  if ( allocated(error_i)) deallocate(error_i)
+!   call auto_rotation(polygon_bd, vertex_1, vertex_2, polygon_bd_rot &
+!        , rot_matrix, rot_angle, axis_abscissa)
 
-  ! done here
-end program tester
+!   call disp('polygon_bd = ', polygon_bd)
+!   call disp('vertex_1 = ', vertex_1)
+!   call disp('vertex_2 = ', vertex_2)
+!   call disp('polygon_bd_rot = ', polygon_bd_rot)
+!   call disp('rot_matrix = ', rot_matrix)
+!   print *, 'rot_angle = ', rot_angle 
+!   print *, 'axis_abscissa = ', axis_abscissa 
+
+!   !
+!   ! --------- test final gauss-legendre quad rule ---------
+!   !
+!   ! simple polygon (quad elem) with automatic rotation
+!   polygon_bd = reshape( (/ 0.0d0, 1.0d0, 1.0d0, 0.0d0, 0.0d0 &
+!                          , 0.0d0, 0.0d0, 1.0d0, 1.0d0, 0.0d0 /), (/5, 2 /) )
+
+!   call polygon_gauss_leg(10, polygon_bd, P, Q, xyw, 1)
+!   call disp('xyw_quad = ', xyw)
+!   ! further write to file
+!   call write_quad_to_file(xyw, 'xyw_quad.dat')
+!   deallocate(polygon_bd, P, Q, xyw)
+
+!   ! a benchmark convex polygon with automatic rotation
+!   allocate(polygon_bd(7, 2))
+!   polygon_bd = reshape( (/ 0.1d0, 0.7d0, 1.0d0, 0.75d0, 0.5d0, 0.0d0, 0.1d0 &
+!        , 0.0d0, 0.2d0, 0.5d0, 0.85d0, 1.0d0, 0.25d0, 0.0d0 /), (/7, 2 /) )
+
+!   call polygon_gauss_leg(50, polygon_bd, P, Q, xyw, 1)
+!   call disp('xyw_convex = ', xyw)
+!   ! further write to file
+!   call write_quad_to_file(xyw, 'xyw_convex.dat')
+!   deallocate(polygon_bd, P, Q, xyw)
+
+!   ! compute the error
+!   allocate(error_i(50))
+!   do i = 1, size(error_i) 
+!      call eval_bench_integ(N = i, polynum = 2, bench = 4 &
+!           , abs_err = error_i(i), option = 1, ngauss = ngauss0, tofile = 1)
+!      print *, i, ngauss0, error_i(i)
+!   end do
+
+
+
+!   ! clean ups
+!   if ( allocated(A) ) deallocate(A)
+!   if ( allocated(full) ) deallocate(full)
+!   if ( allocated(B) ) deallocate(B)
+!   if ( allocated(nodes) ) deallocate(nodes)
+!   if ( allocated(weights) ) deallocate(weights)
+!   if ( allocated(polygon_bd) ) deallocate(polygon_bd)
+!   if ( allocated(polygon_bd_rot) ) deallocate(polygon_bd_rot)
+!   if ( allocated(vertex_1) ) deallocate(vertex_1)
+!   if ( allocated(vertex_2) ) deallocate(vertex_2)
+!   if ( allocated(P)) deallocate(P)
+!   if ( allocated(Q)) deallocate(Q)
+!   if ( allocated(xyw)) deallocate(xyw)
+!   if ( allocated(error_i)) deallocate(error_i)
+
+!   ! done here
+! end program tester

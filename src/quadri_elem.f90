@@ -6,7 +6,7 @@ module quadri_elem
   private
 
 
-  public :: gen_master_quadri, pt_dist_1d
+  public :: gen_master_quadri, pt_dist_1d, fill_elem_coords
 
 contains
 

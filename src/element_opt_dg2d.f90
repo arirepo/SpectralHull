@@ -2,6 +2,7 @@ module element_opt_dg2d
   use element_opt
   use grid_opt
   use euler2d_eqs
+  use spline
   implicit none
 
   private
@@ -41,12 +42,21 @@ module element_opt_dg2d
      ! stored at Gauss points (1:neqs, 1:neqs, 1=plus;2=minus, 1:ngpseg) 
      real*8, dimension(:, :, :, :), allocatable :: dFpm
 
+   contains
+
+     procedure, private :: dealloc_neigh
+
   end type neigh_dg
 
   type edg_dg
      integer :: tag !can be used for BCs
      integer, dimension(:) , allocatable :: pts
      type(neigh_dg), dimension(:) , allocatable :: neighs
+
+   contains
+
+     procedure, private :: dealloc_edg
+
   end type edg_dg
 
   type, extends(element) :: element_dg2d
@@ -55,7 +65,7 @@ module element_opt_dg2d
      ! (1..2, 1..npe) (1, npe) = x <> (2, npe) = y
      real*8, dimension(:, :), allocatable, public :: x !physic. coords
      ! (1..2, 1..npe) (1, npe) = xi <> (2, npe) = eta
-     real*8, dimension(:, :), allocatable :: x_loc !local coords
+     real*8, dimension(:, :), allocatable, public :: x_loc !local coords
      real*8, public :: gamma
      ! (neqs * npe, neqs * npe)
      real*8, dimension(:, :), allocatable, public :: Mass
@@ -87,7 +97,7 @@ module element_opt_dg2d
      procedure, public :: comp_u => comp_u_point_dg
      procedure, public :: comp_flux_interior
      procedure, public :: comp_metric_jacobian => comp_Jstar_point_dg
-     procedure, private :: comp_dpsi => comp_d_psi_d_x
+     procedure, public :: comp_dpsi => comp_d_psi_d_x
      procedure, public :: comp_int_integ => comp_inter_integral
      procedure, public :: xy2rs => xy2rs_dg
      procedure, public :: comp_bnd_integ => comp_bnd_integral
@@ -99,6 +109,10 @@ module element_opt_dg2d
      procedure, public :: comp_pure_flux_jac => comp_pure_flux_jac_interior
      procedure, public :: comp_int_jac_integ => comp_inter_jac_integral
      procedure, public :: comp_dt_Minv_rhs
+     procedure, public :: transform_tri
+     procedure, public :: transform_quadri
+     procedure, public :: alloc_init_loc_matrices
+     procedure, public :: dealloc_elem
 
   end type element_dg2d
 
@@ -155,70 +169,9 @@ contains
           
           elem%gamma = gamma
 
-          if ( allocated(elem%Mass) ) deallocate(elem%Mass)       
-          allocate(elem%Mass(neqs * npe, neqs * npe))
-          elem%Mass = 0.0d0
-
-          if ( allocated(elem%LUmass) ) deallocate(elem%LUmass)       
-          allocate(elem%LUmass(neqs * npe, neqs * npe))
-          elem%LUmass = 0.0d0
-
-          if ( allocated(elem%LUmass_imp) ) deallocate(elem%LUmass_imp)       
-          allocate(elem%LUmass_imp(neqs * npe, neqs * npe))
-          elem%LUmass_imp = 0.0d0
-
-          if ( allocated(elem%IPIVmass) ) deallocate(elem%IPIVmass)       
-          allocate(elem%IPIVmass(neqs * npe))
-          elem%IPIVmass = (/ (ii, ii = 1, (neqs * npe) ) /)
-
-          if ( allocated(elem%IPIVmass_imp) ) deallocate(elem%IPIVmass_imp)       
-          allocate(elem%IPIVmass_imp(neqs * npe))
-          elem%IPIVmass_imp = (/ (ii, ii = 1, (neqs * npe) ) /)
-
-          if ( allocated(elem%U) ) deallocate(elem%U)
-          allocate(elem%U(neqs, npe))
-          elem%U = 0.0d0
-
-          if ( allocated(elem%Us) ) deallocate(elem%Us)
-          allocate(elem%Us(neqs, npe))
-          elem%Us = 0.0d0
-
-          if ( allocated(elem%rhs) ) deallocate(elem%rhs)
-          allocate(elem%rhs(neqs, npe))
-          elem%rhs = 0.0d0
-
-          if ( allocated(elem%So) ) deallocate(elem%So)
-          allocate(elem%So(neqs, elem%ngauss))
-          elem%So = 0.0d0
-
-          if ( allocated(elem%Un) ) deallocate(elem%Un)
-          allocate(elem%Un(neqs, npe))
-          elem%Un = 0.0d0
-
-          if ( allocated(elem%Urk) ) deallocate(elem%Urk)
-          allocate(elem%Urk(neqs, npe, 2))
-          elem%Urk = 0.0d0
-
-          if ( allocated(elem%U0) ) deallocate(elem%U0)
-          allocate(elem%U0(neqs, npe))
-          elem%U0 = 0.0d0
-
-          if ( allocated(elem%Ax) ) deallocate(elem%Ax)
-          allocate(elem%Ax(neqs, npe))
-          elem%Ax = 0.0d0
-
-          if ( allocated(elem%d_psi_d_x) ) deallocate(elem%d_psi_d_x)
-          allocate(elem%d_psi_d_x(npe, elem%ngauss, 2))
-          elem%d_psi_d_x = 0.0d0
-          call elem%comp_dpsi()
-
-          if ( allocated(elem%Fk) ) deallocate(elem%Fk)
-          allocate(elem%Fk(neqs, elem%ngauss, 2))
-          elem%Fk = 0.0d0
-
-          if ( allocated(elem%dFk) ) deallocate(elem%dFk)
-          allocate(elem%dFk(neqs, neqs, elem%ngauss, 2))
-          elem%dFk = 0.0d0
+          ! allocate and initialize the local matrices
+          ! subroutine alloc_init_loc_matrices(elem, npe, neqs)
+          call elem%alloc_init_loc_matrices(npe, neqs)
 
           ! select the coefficient of the Jacobian of the transformation
           select case (elem%elname)
@@ -582,6 +535,14 @@ contains
     real*8, dimension(2), save :: der, F, delta
     real*8, dimension(2,2), save:: JJ, Jinv
 
+print *, ' size(elem%edgs) = ', size(elem%edgs)
+
+if ( elem%elname .eq. GEN_SPHULL ) then
+r = x
+s = y
+return
+end if
+
     ! initial guess
     r = 0.25d0; s =0.25d0
     npt = elem%npe
@@ -628,7 +589,7 @@ contains
           if ( (elem%p < 2) .and. (j > 2) ) then
              print *, 'number of itr is ', j, ' and is greater than 2 ' &
                     , 'for linear element with number', elem%number, '! stop.'
-             stop
+             !stop
           else if (  (r > (1.0d0 + tolrs)) .or. (s > (1.0d0 + tolrs)) &
                .or.  (r < (0.0d0 - tolrs)) .or. (s < (0.0d0 - tolrs)) ) then
              ! print *, '(r,s) = ', r, s ,' out of range! stop.'
@@ -642,7 +603,16 @@ contains
 
     print *, 'xy2rs_dg(...) did not converge' &
          , ' to desired tolerance in ', maxitr, 'iterations' &
-         , ' at point (', x, y, ')! stop.'
+         , ' at point (', x, y, ')! the residual is : ', sqrt(sum(delta*delta)) &
+         , ' for element name ', elem%elname, ' size(elem%edgs) = ' &
+         , size(elem%edgs), 'elem%number = ', elem%number, ' . stop.'
+print *, 'elem%x(1, :) ' , elem%x(1, :)
+print *, 'elem%x(2, :) ' , elem%x(2, :)
+print *, 'elem%x_loc(1, :) ' , elem%x_loc(1, :)
+print *, 'elem%x_loc(2, :) ' , elem%x_loc(2, :)
+do i = 1, size(elem%edgs)
+print *, 'elem%edgs(i)%neighs(1)%elnum = ', elem%edgs(i)%neighs(1)%elnum
+end do
     stop
 
     ! done here
@@ -937,5 +907,505 @@ if (elem%number .eq. 4) print *, 'xso = ', x, 'yso = ', y
 
     ! done here
   end subroutine comp_dt_Minv_rhs
+
+  ! general master element r : 0->1, s : 0->1
+  ! to physical coordinate transformation
+  ! for linear and curved (nonlinear) DG triangle
+  !
+  ! NOTE : the grd structure is only used for mapping
+  ! curved boundaries (if user decides to do so).
+  ! if grd%linear_boundaries = .false.; which is default,
+  ! then the boundaries are treated as either NURB or spline
+  ! curves otherwise if grd%linear_boundaries = .true. then
+  ! the boundaries are simply linear.
+  !
+  subroutine transform_tri(elem, grd, xi, eta, x, y, tol)
+    implicit none
+    class(element_dg2d), intent(inout) :: elem
+    type(grid), intent(in), target :: grd
+    real*8, intent(in) :: xi, eta
+    real*8, intent(out) :: x, y
+    real*8, intent(in) :: tol
+
+    ! local vars
+    integer :: nc, tag, pt1, pt2, pt3
+    real*8 :: x1_x, x1_y, x2_x, x2_y, x3_x, x3_y
+    real*8 :: Cx, Cy
+    real*8 :: tt, t1, t2
+    type(curve), pointer :: tcurve
+    real*8, dimension(:), pointer :: t, xs, ys
+    integer :: i, edgnum
+    real*8 :: tangx, tangy, norm_tang, tmpx, tmpy
+    real*8 :: xtmp(2,3)
+
+    ! determine tag
+    if ( all(elem%edgs(:)%tag .eq. 0) .or. grd%linear_boundaries ) then
+       tag = 0 ! interior
+    elseif ( count(elem%edgs(:)%tag .ne. 0) > 1 ) then
+       print *, 'two edges in one element has tag(bc) of non-interior! stop'
+       stop
+    else ! we are good to go
+       do i = 1, size(elem%edgs)
+          tag = elem%edgs(i)%tag
+          if ( tag .ne. 0 ) then ! we found it!
+             edgnum = i
+             exit
+          else
+             cycle
+          end if
+       end do
+    end if
+
+    ! first determine points 1, 2, 3
+    if ( (tag .eq. 0) .or. grd%linear_boundaries ) then ! interior
+       pt1 = 1
+       pt2 = 2
+       pt3 = 3
+    else ! boundary
+
+       select case (edgnum)
+       case (1)
+          pt1 = 1; pt2 = 2; pt3 = 3
+       case (2)
+          pt1 = 2; pt2 = 3; pt3 = 1
+       case (3)
+          pt1 = 3; pt2 = 1; pt3 = 2
+       case default
+          print *, 'could not find the point orientation of' &
+               , ' boundary curved triangle transformation! stop'
+          stop
+       end select
+
+       xtmp(:, 1) = elem%x(:, pt1)
+       xtmp(:, 2) = elem%x(:, pt2)
+       xtmp(:, 3) = elem%x(:, pt3)
+       ! swap
+       elem%x(1:2, 1:3) = xtmp
+
+    end if
+
+    ! find coordinates
+    x1_x =  elem%x(1, 1)
+    x1_y =  elem%x(2, 1)
+    x2_x =  elem%x(1, 2)
+    x2_y =  elem%x(2, 2)
+    x3_x =  elem%x(1, 3)
+    x3_y =  elem%x(2, 3)
+
+    ! find tangential vector to side y1
+    norm_tang = sqrt( (x2_x - x1_x)**2.0d0 + (x2_y - x1_y)**2.0d0 )
+    tangx = (x2_x - x1_x) / norm_tang
+    tangy = (x2_y - x1_y) / norm_tang
+
+    ! compute Cx, Cy
+    if( (tag .eq. 0) .or. grd%linear_boundaries ) then ! no curve bn
+       Cx = x1_x + xi * (x2_x - x1_x)
+       Cy = x1_y + xi * (x2_y - x1_y)
+    else ! do boundary curve interpolation
+
+       tcurve => grd%bn_curves(tag)
+       xs => tcurve%x
+       ys => tcurve%y
+       t  => tcurve%t
+       nc = size(xs)
+
+       ! find_t(grd, tag, x, y, tol, t)
+       tmpx = x1_x + piecewise_tol * tangx
+       tmpy = x1_y + piecewise_tol * tangy 
+       call find_t(grd, tag, tmpx, tmpy, tol, t1)
+       tmpx = x2_x - piecewise_tol * tangx
+       tmpy = x2_y - piecewise_tol * tangy 
+       call find_t(grd, tag, tmpx, tmpy, tol, t2)
+       t1 = dble(nint(t1))
+       t2 = dble(nint(t2))
+
+       tt = t1 + xi * (t2 - t1)
+
+       call spline_nurbs_eval2(tt, xs, ys, tcurve%a, tcurve%b, tcurve%c &
+            , tcurve%Mx, tcurve%My, t, Cx, Cy, 'interp', tcurve%btype)
+
+    end if
+
+    ! finalize the transformation
+    if ( abs(xi - 1.0d0) <= tol ) then
+       x = x2_x 
+       y = x2_y
+    else
+       x = (1.0d0 - xi - eta) / (1.0d0 - xi) * Cx &
+            + (xi * eta) / (1.0d0 - xi) * x2_x + eta * x3_x
+       y = (1.0d0 - xi - eta) / (1.0d0 - xi) * Cy &
+            + (xi * eta) / (1.0d0 - xi) * x2_y + eta * x3_y
+    end if
+
+
+    ! done here
+  end subroutine transform_tri
+
+  ! =================================
+  ! ============  MAP ===============
+  ! =================================
+  !                <edge : y3>
+  !      (pt4) *-----------------* (pt3)
+  !            |                 |
+  !            |                 |
+  !            |                 |
+  !<edge : y4> |                 | <edge : y2>
+  !            | --     ------   |
+  !            |/  \   /      \  |
+  !            *   ----        --*
+  !         (pt1)  <edge : y1>  (pt2)
+  ! =================================
+  ! =================================
+
+  ! the edge y1 corresponding to the only curved side 
+  ! of the quad. Matches this curved side of the boundary
+  ! quads by replacing this with bn_curves structure.
+  ! Otherwise, if the quad element is an interior quad, use straight 
+  ! line definition. This is DG implementation ONLY. 
+  !
+  ! NOTE : the grd structure is only used for mapping
+  ! curved boundaries (if user decides to do so).
+  ! if grd%linear_boundaries = .false.; which is default,
+  ! then the boundaries are treated as either NURB or spline
+  ! curves otherwise if grd%linear_boundaries = .true. then
+  ! the boundaries are simply linear.
+  !
+
+  subroutine transform_quadri(elem, grd, xi, eta, x, y, tol)
+    implicit none
+    class(element_dg2d), intent(inout) :: elem
+    type(grid), target, intent(in) :: grd
+    real*8, intent(in) :: xi, eta
+    real*8, intent(out) :: x, y
+    real*8, intent(in) :: tol
+
+    ! local vars
+    integer :: nc, tag
+    integer, dimension(4) :: pt
+    real*8, dimension(4) :: xx, yy
+    real*8 :: tt, t1, t2
+    type(curve), pointer :: tcurve => null()
+    real*8, dimension(:), pointer :: t => null(), xs => null(), ys => null()
+    integer :: i, edgnum, j, k
+    logical :: duplicate
+    real*8 :: y1x, y1y, y3x, y3y
+    real*8 :: area
+    integer :: twist, pt_tmp
+    real*8 :: tangx, tangy, norm_tang, tmpx, tmpy
+    real*8 :: xtmp(2,4)
+
+    ! determine tag
+    if ( all(elem%edgs(:)%tag .eq. 0) .or. grd%linear_boundaries ) then
+       tag = 0 ! interior or linear boundaries
+    elseif ( count(elem%edgs(:)%tag .ne. 0) > 1 ) then
+       print *, 'two edges in one quad element has tag(bc) of non-interior! stop'
+       stop
+    else ! we are good to go
+       do i = 1, size(elem%edgs)
+          tag = elem%edgs(i)%tag
+          if ( tag .ne. 0 ) then ! we found it!
+             edgnum = i
+             exit
+          else
+             cycle
+          end if
+       end do
+    end if
+
+    ! first determine points 1, 2, 3 and 4
+    if ( (tag .eq. 0) .or. grd%linear_boundaries ) then ! interior
+       pt = (/ 1, 2, 3, 4 /)
+    else ! boundary
+
+       select case (edgnum)
+       case (1)
+          pt = (/ 1, 2, 3, 4 /)
+       case (2)
+          pt = (/ 2, 3, 4, 1 /)
+       case (3)
+          pt = (/ 3, 4, 1, 2 /)
+       case (4)
+          pt = (/ 4, 1, 2, 3 /)
+       case default
+          print *, 'could not find the point orientation of' &
+               , ' boundary curved quadrilateral transformation! stop'
+          stop
+       end select
+
+       xtmp(:, 1) = elem%x(:, pt(1))
+       xtmp(:, 2) = elem%x(:, pt(2))
+       xtmp(:, 3) = elem%x(:, pt(3))
+       xtmp(:, 4) = elem%x(:, pt(4))
+       ! swap
+       elem%x(1:2, 1:4) = xtmp
+
+    end if
+
+    ! see if the chosen points lead to
+    ! a good or twisted element, if
+    ! twisted then swap points 3, 4
+    ! to make it good element
+    !
+    ! subroutine comp_quad4_area(x, y, area, twist)
+    !
+    call comp_quad4_area(elem%x(1, :), elem%x(2, :), area, twist)
+    if ( twist .eq. 1 ) then ! twisted!
+
+       !swapping ...
+       pt = (/ 1, 2, 3, 4 /)
+       pt_tmp = pt(4)
+       pt(4) = pt(3)
+       pt(3) = pt_tmp
+       xtmp(:, 1) = elem%x(:, pt(1))
+       xtmp(:, 2) = elem%x(:, pt(2))
+       xtmp(:, 3) = elem%x(:, pt(3))
+       xtmp(:, 4) = elem%x(:, pt(4))
+       ! swap
+       elem%x(1:2, 1:4) = xtmp
+
+       ! double check
+       call comp_quad4_area(elem%x(1, :), elem%x(2, :), area, twist)
+       if (twist .eq. 1) then ! still twisted wow !!!
+          print *, 'the quad element #', elem%number, 'is twisted' &
+               , ' and cant be fixed! stop'
+          stop
+       end if
+
+    end if
+
+    ! find coordinates
+print *, 'elem%x(1, :) = ',  elem%x(1, :)
+print *, 'elem%x(2, :) = ',  elem%x(2, :)
+    xx = elem%x(1, 1:4)
+    yy = elem%x(2, 1:4)
+
+    ! find tangential vector to side y1
+norm_tang = sqrt( (xx(2) - xx(1))**2.0d0 + (yy(2) - yy(1))**2.0d0 )
+tangx = (xx(2) - xx(1)) / norm_tang
+tangy = (yy(2) - yy(1)) / norm_tang
+
+    ! compute y1 or the possibly curved side
+    if( tag .eq. 0 ) then ! no curve bn
+       y1x = xx(1) + 0.5d0 * (xi + 1.0d0) * (xx(2) - xx(1))
+       y1y = yy(1) + 0.5d0 * (xi + 1.0d0) * (yy(2) - yy(1))
+
+    else ! do boundary curve interpolation
+
+       tcurve => grd%bn_curves(tag)
+       xs => tcurve%x
+       ys => tcurve%y
+       t  => tcurve%t
+       nc = size(xs)
+
+       ! find_t(grd, tag, x, y, tol, t)
+tmpx = xx(1) + piecewise_tol * tangx
+tmpy = yy(1) + piecewise_tol * tangy 
+       call find_t(grd, tag, tmpx, tmpy, tol, t1)
+tmpx = xx(2) - piecewise_tol * tangx
+tmpy = yy(2) - piecewise_tol * tangy 
+       call find_t(grd, tag, tmpx, tmpy, tol, t2)
+t1 = dble(nint(t1))
+t2 = dble(nint(t2))
+       tt = t1 + 0.5d0 * (xi + 1.0d0) * (t2 - t1)
+
+       call spline_nurbs_eval2(tt, xs, ys, tcurve%a, tcurve%b, tcurve%c &
+                   , tcurve%Mx, tcurve%My, t, y1x, y1y, 'interp', tcurve%btype)
+    end if
+
+    ! finalize the transformation
+    y3x = xx(4) + 0.5d0 * (xi + 1.0d0) * (xx(3) - xx(4))
+    y3y = yy(4) + 0.5d0 * (xi + 1.0d0) * (yy(3) - yy(4))
+
+    x = (eta + 1.0d0) / 2.0d0 * y3x - (eta - 1.0d0) / 2.0d0 * y1x
+    y = (eta + 1.0d0) / 2.0d0 * y3y - (eta - 1.0d0) / 2.0d0 * y1y
+  
+    ! done here
+  end subroutine transform_quadri
+
+  ! 
+  subroutine alloc_init_loc_matrices(elem, npe, neqs)
+    implicit none
+    class(element_dg2d), intent(inout) :: elem
+    integer, intent(in) :: npe, neqs 
+
+    ! local vars
+    integer :: ii
+
+    if ( allocated(elem%Mass) ) deallocate(elem%Mass)       
+    allocate(elem%Mass(neqs * npe, neqs * npe))
+    elem%Mass = 0.0d0
+
+    if ( allocated(elem%LUmass) ) deallocate(elem%LUmass)       
+    allocate(elem%LUmass(neqs * npe, neqs * npe))
+    elem%LUmass = 0.0d0
+
+    if ( allocated(elem%LUmass_imp) ) deallocate(elem%LUmass_imp)       
+    allocate(elem%LUmass_imp(neqs * npe, neqs * npe))
+    elem%LUmass_imp = 0.0d0
+
+    if ( allocated(elem%IPIVmass) ) deallocate(elem%IPIVmass)       
+    allocate(elem%IPIVmass(neqs * npe))
+    elem%IPIVmass = (/ (ii, ii = 1, (neqs * npe) ) /)
+
+    if ( allocated(elem%IPIVmass_imp) ) deallocate(elem%IPIVmass_imp)       
+    allocate(elem%IPIVmass_imp(neqs * npe))
+    elem%IPIVmass_imp = (/ (ii, ii = 1, (neqs * npe) ) /)
+
+    if ( allocated(elem%U) ) deallocate(elem%U)
+    allocate(elem%U(neqs, npe))
+    elem%U = 0.0d0
+
+    if ( allocated(elem%Us) ) deallocate(elem%Us)
+    allocate(elem%Us(neqs, npe))
+    elem%Us = 0.0d0
+
+    if ( allocated(elem%rhs) ) deallocate(elem%rhs)
+    allocate(elem%rhs(neqs, npe))
+    elem%rhs = 0.0d0
+
+    if ( allocated(elem%So) ) deallocate(elem%So)
+    allocate(elem%So(neqs, elem%ngauss))
+    elem%So = 0.0d0
+
+    if ( allocated(elem%Un) ) deallocate(elem%Un)
+    allocate(elem%Un(neqs, npe))
+    elem%Un = 0.0d0
+
+    if ( allocated(elem%Urk) ) deallocate(elem%Urk)
+    allocate(elem%Urk(neqs, npe, 2))
+    elem%Urk = 0.0d0
+
+    if ( allocated(elem%U0) ) deallocate(elem%U0)
+    allocate(elem%U0(neqs, npe))
+    elem%U0 = 0.0d0
+
+    if ( allocated(elem%Ax) ) deallocate(elem%Ax)
+    allocate(elem%Ax(neqs, npe))
+    elem%Ax = 0.0d0
+
+    if ( allocated(elem%d_psi_d_x) ) deallocate(elem%d_psi_d_x)
+    allocate(elem%d_psi_d_x(npe, elem%ngauss, 2))
+    elem%d_psi_d_x = 0.0d0
+
+
+    if ( allocated(elem%Fk) ) deallocate(elem%Fk)
+    allocate(elem%Fk(neqs, elem%ngauss, 2))
+    elem%Fk = 0.0d0
+
+    if ( allocated(elem%dFk) ) deallocate(elem%dFk)
+    allocate(elem%dFk(neqs, neqs, elem%ngauss, 2))
+    elem%dFk = 0.0d0
+
+    ! done here
+  end subroutine alloc_init_loc_matrices
+
+  ! completely cleans/deallocates
+  ! a neighbor struct
+  !
+  subroutine dealloc_neigh(tneigh)
+    implicit none
+    class(neigh_dg), intent(inout) :: tneigh
+
+    if(allocated(tneigh%xi)) deallocate(tneigh%xi)
+    if(allocated(tneigh%W)) deallocate(tneigh%W)
+    if(allocated(tneigh%xloc_in)) deallocate(tneigh%xloc_in)
+    if(allocated(tneigh%xloc_out)) deallocate(tneigh%xloc_out)
+    if(allocated(tneigh%x)) deallocate(tneigh%x)
+    if(allocated(tneigh%dx)) deallocate(tneigh%dx)
+    if(allocated(tneigh%n)) deallocate(tneigh%n)
+    if(allocated(tneigh%s)) deallocate(tneigh%s)
+    if(allocated(tneigh%psi_in)) deallocate(tneigh%psi_in)
+    if(allocated(tneigh%Fstar)) deallocate(tneigh%Fstar)
+    if(allocated(tneigh%dFpm)) deallocate(tneigh%dFpm)
+
+    ! done here
+  end subroutine dealloc_neigh
+
+  ! completely cleans/deallocates
+  ! an edg_dg struct
+  !
+  subroutine dealloc_edg(tedg)
+    implicit none
+    class(edg_dg), intent(inout) :: tedg
+
+    ! local vars
+    integer :: i
+
+    if(allocated(tedg%pts)) deallocate(tedg%pts)
+
+    if (allocated(tedg%neighs)) then
+       do i = 1, size(tedg%neighs)
+          call tedg%neighs(i)%dealloc_neigh()
+       end do
+    end if
+
+    if (allocated(tedg%neighs)) deallocate(tedg%neighs)
+
+    ! done here
+  end subroutine dealloc_edg
+
+  ! completely deallocates/cleans
+  ! an element/hull
+  !
+  subroutine dealloc_elem(elem)
+    implicit none
+    class(element_dg2d), intent(inout) :: elem
+
+    ! local vars
+    integer :: i
+
+    if(allocated(elem%r)) deallocate(elem%r)
+    if(allocated(elem%s)) deallocate(elem%s)
+    if(allocated(elem%W)) deallocate(elem%W)
+
+    call elem%tbasis%dealloc_basis()
+
+    if(allocated(elem%psi)) deallocate(elem%psi)
+    if(allocated(elem%d_psi_d_xi)) deallocate(elem%d_psi_d_xi)
+    if(allocated(elem%d_psi_d_eta)) deallocate(elem%d_psi_d_eta)
+
+    if(allocated(elem%jac)) deallocate(elem%jac)
+    if(allocated(elem%Jstar)) deallocate(elem%Jstar)
+    if(allocated(elem%JJ)) deallocate(elem%JJ)
+
+    if(allocated(elem%K)) deallocate(elem%K)
+    if(allocated(elem%M)) deallocate(elem%M)
+    if(allocated(elem%Q)) deallocate(elem%Q)
+    if(allocated(elem%f)) deallocate(elem%f)
+
+    if ( associated(elem%A)) nullify(elem%A)
+
+    if(allocated(elem%x)) deallocate(elem%x)
+    if(allocated(elem%x_loc)) deallocate(elem%x_loc)
+
+    if(allocated(elem%Mass)) deallocate(elem%Mass)
+    if(allocated(elem%LUmass)) deallocate(elem%LUmass)
+    if(allocated(elem%LUmass_imp)) deallocate(elem%LUmass_imp)
+
+    if(allocated(elem%IPIVmass)) deallocate(elem%IPIVmass)
+    if(allocated(elem%IPIVmass_imp)) deallocate(elem%IPIVmass_imp)
+
+    if(allocated(elem%U)) deallocate(elem%U)
+    if(allocated(elem%Us)) deallocate(elem%Us)
+    if(allocated(elem%rhs)) deallocate(elem%rhs)
+    if(allocated(elem%So)) deallocate(elem%So)
+    if(allocated(elem%Un)) deallocate(elem%Un)
+    if(allocated(elem%Urk)) deallocate(elem%Urk)
+    if(allocated(elem%d_psi_d_x)) deallocate(elem%d_psi_d_x)
+    if(allocated(elem%Fk)) deallocate(elem%Fk)
+    if(allocated(elem%dFk)) deallocate(elem%dFk)
+    if(allocated(elem%U0)) deallocate(elem%U0)
+    if(allocated(elem%Ax)) deallocate(elem%Ax)
+
+    if ( allocated(elem%edgs) ) then
+       do i = 1, size(elem%edgs)
+          call elem%edgs(i)%dealloc_edg()
+       end do
+    end if
+
+    if ( allocated(elem%edgs) ) deallocate(elem%edgs)
+
+    ! done here
+  end subroutine dealloc_elem
 
 end module element_opt_dg2d

@@ -226,8 +226,11 @@ int *new_segmentmarkerlist;
   /* triangulate("pczAevn", &in, &mid, &vorout); */
   triangulate(cmd_arg_string, &in, &mid, &vorout);  
 
-  if ( report_after )
-       report(&mid, 0, 1, 0, 1, 0, 0);
+  if ( report_after != 14)
+  {
+       if ( report_after )
+	    report(&mid, 0, 1, 0, 1, 0, 0);
+  }
 
   /* check the consistency of the generated trimesh */
   /*      and any possible memory leak and segfaults */
@@ -253,17 +256,19 @@ int *new_segmentmarkerlist;
   for( i = 0; i < (mid.numberofcorners * mid.numberoftriangles); i++)
        trianglelist[i] = mid.trianglelist[i];
   /* printf("\n\n\n __________________________I'm here. OKKKK\n\n\n");       */
-  for( i = 0; i < (3 * mid.numberoftriangles) ; i++)
-       neighborlist[i] = mid.neighborlist[i];
-  /* if( mid.neighborlist == (int *)NULL) printf("\nOh, trash ...\n"); */
+
+  if ( report_after != 14)
+  {
+       for( i = 0; i < (3 * mid.numberoftriangles) ; i++)
+	    neighborlist[i] = mid.neighborlist[i];
+       /* if( mid.neighborlist == (int *)NULL) printf("\nOh, trash ...\n"); */
   
-  *new_numberofsegments = mid.numberofsegments;
-  for ( i = 0; i < (mid.numberofsegments*2) ; i++)
-       new_segmentlist[i] = mid.segmentlist[i];
-  for ( i = 0; i < mid.numberofsegments ; i++)  
-       new_segmentmarkerlist[i] = mid.segmentmarkerlist[i];
-
-
+       *new_numberofsegments = mid.numberofsegments;
+       for ( i = 0; i < (mid.numberofsegments*2) ; i++)
+	    new_segmentlist[i] = mid.segmentlist[i];
+       for ( i = 0; i < mid.numberofsegments ; i++)  
+	    new_segmentmarkerlist[i] = mid.segmentmarkerlist[i];
+  }
   
   /* Free all allocated arrays, including those allocated by Triangle. */
   /* free(in.pointlist); */

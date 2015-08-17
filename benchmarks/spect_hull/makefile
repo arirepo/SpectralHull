@@ -18,7 +18,7 @@ VPATH = ./:../../src:
 # F90 = /home/aghasemi/gcc-trunk/bin/gfortran
 F90 = /usr/local/gcc-5-20150306/bin/gfortran
 F77 = $(F90)
-#CC = cc
+# CC = cc
 CC = /usr/local/gcc-5-20150306/bin/gcc
 # CC = icc
 ##F90 = gfortran
@@ -39,14 +39,16 @@ LIBS    =
 INCS    = 
 LINKFLAGS    =      $(COMMONFLAGS) 
 # LINK_SUFFIX  =     -llapack -lblas
-LINK_SUFFIX  =   -L/home/aghasemi/blueprint_lapack/gfort_lapack/lapack-3.5.0 -llapack -lblas 
+LINK_SUFFIX  =   -L/home/aghasemi/blueprint_lapack/gfort_lapack/lapack-3.5.0 -llapack -lblas
+
 OMP_FLAGS = -fopenmp
+# OMP_FLAGS = 
 
 ## NOTE!!! Now add your object files that you need for 
 #          your test case problem. 
 
 ### objects
-OBJ = euler2d_eqs.o triangle.o custom_Tri_wrapper.o condition.o fekete.o ncc_triangle.o globals.o nurbs.o spline.o splib.o ortho_poly.o fem_reordering.o quadri_elem.o approx_fekete.o grid_opt.o lag_basis.o fem_utils.o dunavant.o gen_basis.o element_opt.o element_opt_dg2d.o dg_workspace.o bn_integral.o bcs.o spem_2d.o interp.o ps.o trimesher.o plot_curved_elems.o plot_curved_elems_dg.o tester.o   
+OBJ = renka_trimesh_lib.o renka_trimesh.o polygauss.o quads.o euler2d_eqs.o triangle.o custom_Tri_wrapper.o condition.o fekete.o ncc_triangle.o globals.o nurbs.o spline.o splib.o ortho_poly.o fem_reordering.o quadri_elem.o approx_fekete.o grid_opt.o grd2hull.o lag_basis.o fem_utils.o dunavant.o gen_basis.o element_opt.o element_opt_dg2d.o dg_workspace.o bn_integral.o bcs.o spem_2d.o interp.o ps.o trimesher.o plot_curved_elems.o plot_curved_elems_dg.o tester.o   
 ###
 
 ### compile and link

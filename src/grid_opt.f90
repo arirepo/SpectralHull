@@ -69,12 +69,14 @@ module grid_opt
      ! (1:ncellsg, 1:4) includes tri and quad simultanously!
      integer, dimension(:, :), allocatable :: local_edg_bc
 
+     logical :: linear_boundaries = .false.
+
   end type grid
 
   ! enumerate types for element names grd%elname
   !
-  integer, parameter, public :: GEN_TRIANGLE = 1, GEN_QUADRI = 2
-  real*8, parameter :: piecewise_tol = 1.0d-9
+  integer, parameter, public :: GEN_TRIANGLE = 1, GEN_QUADRI = 2, GEN_SPHULL = 3
+  real*8, parameter, public :: piecewise_tol = 1.0d-9
 
   ! public data structure
   public :: grid, curve
@@ -89,6 +91,8 @@ module grid_opt
   public :: fill_ibedgeELEM_local_edg
   public :: find_dup_nodes, find_t
   public :: fill_local_edg_bc
+  public :: comp_quad4_area
+  public :: snap2curve
 
 contains
 
@@ -1937,7 +1941,7 @@ t2 = dble(nint(t2))
   ! if it is twisted or not!
   subroutine comp_quad4_area(x, y, area, twist)
     implicit none
-    real*8, dimension(4), intent(in) :: x, y
+    real*8, dimension(:), intent(in) :: x, y
     real*8, intent(out) :: area
     integer, intent(out) :: twist
 

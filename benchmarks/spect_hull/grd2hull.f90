@@ -1,12 +1,15 @@
 module grd2hull
+  ! version 2.00; %x is now local to each edge
   use grid_opt
+  use approx_fekete
   implicit none
 
   private
 
   type ej
 
-     integer :: pt(2)
+     ! (1=x;2=y , 1=pt1;2=pt2) 
+     real*8, dimension(2,2) :: x
      integer :: bc, neigh
 
   end type ej
@@ -22,15 +25,16 @@ module grd2hull
 
   type hulls
 
-     real*8, dimension(:, :), allocatable :: x
      type(hull), dimension(:), allocatable :: hl
 
   end type hulls
 
+  real*8, parameter :: PI_NUM = 4.D0*DATAN(1.D0)
 
-  public :: hulls
+  public :: hull, hulls
   public :: convert_grd_to_hull, write_hulls_gnuplot
-  public :: agglomerate_hulls
+  public :: agglomerate_hulls, hull2array, hull2edgs
+  public :: print_hulls
 
 contains
 
@@ -55,15 +59,6 @@ contains
        print *, 'before converting to hull, the grid object first needs to be initialized! stop'
        stop
     end if
-
-    if ( allocated(hls%x) ) then
-       print *, 'it seems that you already created the hull! stop'
-    end if
-
-    ! init global coordinates
-    allocate(hls%x(2, size(grd%x)))
-    hls%x(1, :) = grd%x
-    hls%x(2, :) = grd%y
 
     ! init all hulls
     allocate(hls%hl(size(grd%icon, 1)))
@@ -105,7 +100,8 @@ contains
           else
              pt2 = grd%icon(i, (j+1))
           end if
-          thull%ejs(j)%pt = (/ pt1, pt2 /)
+          thull%ejs(j)%x(:,1) = (/ grd%x(pt1), grd%y(pt1) /)
+          thull%ejs(j)%x(:,2) = (/ grd%x(pt2), grd%y(pt2) /)
 
           ! detect neighbor per that edge 
           if ( j .eq. 1 ) then
@@ -140,17 +136,18 @@ contains
     ! local vars
     integer :: i
     type(ej), pointer :: lej => null() ! local ej
-    integer :: pt_rev(2)
+    real*8, dimension(2,2) :: pt_rev
 
     ! init
     find_local_ej_in_hull = -1 ! initially no local ej!
-    pt_rev = (/ tej%pt(2), tej%pt(1) /)
+    pt_rev(:,1) = tej%x(:,2)
+    pt_rev(:,2) = tej%x(:,1)
 
     do i = 1, size(thull%ejs)
 
        lej => thull%ejs(i)
 
-       if ( all(lej%pt .eq. tej%pt) .or. all(lej%pt .eq. pt_rev)  ) then
+       if ( all(lej%x .eq. tej%x) .or. all(lej%x .eq. pt_rev)  ) then
           find_local_ej_in_hull = i
           return
        end if
@@ -215,26 +212,30 @@ contains
   ! if (z = ej1 <cross> ej2) >= 0 then convex
   ! else concave!
   ! 
-  function is_convex(ej1, ej2, x)
+  function is_convex(ej1, ej2)
     implicit none
     type(ej), intent(in) :: ej1, ej2
-    real*8, dimension(:, :), intent(in) :: x
     logical :: is_convex
 
     ! local vars
-    integer :: pt1, pt2
+    real*8 :: x1, y1, x2, y2
     real*8 :: a, b, c, d, z
 
     ! compute the components of vector ej1 and ej2
     ! NOTE : orientation is also accounted 
     ! ej1 ...
-    pt1 = ej1%pt(1); pt2 = ej1%pt(2) 
-    a = x(1, pt2) - x(1, pt1)
-    b = x(2, pt2) - x(2, pt1)
+    x1 = ej1%x(1,1); y1 = ej1%x(2,1)
+    x2 = ej1%x(1,2); y2 = ej1%x(2,2)
+
+    a = x2 - x1
+    b = y2 - y1
+
     ! ej2 ...
-    pt1 = ej2%pt(1); pt2 = ej2%pt(2) 
-    c = x(1, pt2) - x(1, pt1)
-    d = x(2, pt2) - x(2, pt1)
+    x1 = ej2%x(1,1); y1 = ej2%x(2,1)
+    x2 = ej2%x(1,2); y2 = ej2%x(2,2)
+
+    c = x2 - x1
+    d = y2 - y1
     ! compute cross product
     z = a * d - c * b 
 
@@ -348,6 +349,25 @@ contains
        return
     end if
 
+    if ( (size(thull1%ejs) >= 4) .or. (size(thulls%hl(hullnum2)%ejs) >= 4) ) then
+       try_agglomerate = .false.
+       return
+    end if
+
+    do i = 1, size(thull1%ejs)
+       if ( any(thull1%ejs(i)%x(1,:) < .5d0) ) then
+             try_agglomerate = .false.
+             return
+       end if
+    end do
+
+    do i = 1, size(thulls%hl(hullnum2)%ejs)
+       if ( any(thulls%hl(hullnum2)%ejs(i)%x(1,:) < .5d0) ) then
+             try_agglomerate = .false.
+             return
+       end if
+    end do
+
     ej1num = cyclic_ej_num(thull1, loc_ej, -1)
     ej1 => thull1%ejs(ej1num)
 
@@ -357,7 +377,8 @@ contains
     ej2num = cyclic_ej_num(neigh_hull, loc2, 1)
     ej2 => neigh_hull%ejs(ej2num)
 
-    if (.not. is_convex(ej1, ej2, thulls%x)) then
+    if ( (.not. is_convex(ej1, ej2)) &
+         .or. (.not. is_angle_good(ej1, ej2, 10.0d0)) ) then
        try_agglomerate = .false.
        return
     end if
@@ -368,7 +389,8 @@ contains
     ej2num = cyclic_ej_num(thull1, loc_ej, 1)
     ej2 => thull1%ejs(ej2num)
 
-    if (.not. is_convex(ej1, ej2, thulls%x)) then
+    if ( (.not. is_convex(ej1, ej2)) &
+         .or. (.not. is_angle_good(ej1, ej2, 10.0d0)) ) then
        try_agglomerate = .false.
        return
     end if
@@ -433,6 +455,10 @@ contains
 
     end do ! agglomeration of all hulls
 
+    ! only select active or boundary hulls 
+    ! and update numbering
+    call elim_inact_hulls(thulls)
+
     ! done here
   end subroutine agglomerate_hulls
 
@@ -442,12 +468,11 @@ contains
     type(hulls), intent(in), target :: thulls
 
     ! local vars
-    integer :: i, j, pt
+    integer :: i, j
     type(ej), dimension(:), pointer :: ejs => null()
-    real*8, dimension(:, :), pointer :: x => null()
+
 
     ! init
-    x => thulls%x
     open(unit = 10, file = fname, status = 'unknown')
 
     do i = 1, size(thulls%hl)
@@ -458,12 +483,10 @@ contains
 
        do j = 1, size(ejs)
 
-          pt = ejs(j)%pt(1)
-          write(10, *) x(1, pt), x(2, pt)
+          write(10, *) ejs(j)%x(1, 1), ejs(j)%x(2, 1)
 
           if ( j .eq. size(ejs) ) then
-             pt = ejs(j)%pt(2)
-             write(10, *) x(1, pt), x(2, pt)
+             write(10, *) ejs(j)%x(1, 2), ejs(j)%x(2, 2)
           end if
 
        end do
@@ -477,5 +500,251 @@ contains
 
     ! done here
   end subroutine write_hulls_gnuplot
+
+  ! converts a given hull to an array
+  ! containing the nodes connected sequntially
+  ! in conterclockwise direction and the last node
+  ! is repeated.
+  !
+  ! for a polygon(hull) that has "l" sides, "ar" is an
+  ! array containing its vertices, ordered counterclockwise.
+  ! as last row must have the components of the first vertex.
+  ! in other words, the first row and last row are equal.
+  ! Therefore "ar" is a "l+1 x 2" matrix.
+  !
+  subroutine hull2array(hl, ar)
+    implicit none
+    class(hull), intent(in) :: hl
+    real*8, dimension(:, :), allocatable :: ar
+
+    ! local vars
+    integer :: i, nrow
+
+    ! determine the number of rows 
+    ! of the output array "ar"
+    nrow = size(hl%ejs) + 1 ! one repeated vertex
+
+    ! allocate the output array
+    if ( allocated(ar) ) deallocate(ar)
+    allocate(ar(nrow, 2))
+
+    ! packing the vertices of hull into array
+    do i = 1, size(hl%ejs)
+       ar(i, :) = hl%ejs(i)%x(:, 1)
+    end do
+
+    ! inserting the last repeated node
+    ar(nrow, :) = hl%ejs(size(hl%ejs))%x(:, 2)
+
+    ! final check
+    if ( any( ar(1, :) .ne. ar(nrow, :) ) ) then
+       print *, 'the given hull could not be converted to array! stop'
+       stop
+    end if
+
+    ! done here
+  end subroutine hull2array
+
+  ! converts an "hull" class to "edgs" class 
+  ! defined in approximate Fekete module
+  subroutine hull2edgs(hl, tedgs)
+    implicit none
+    class(hull), intent(in), target :: hl
+    class(edgs), intent(out) :: tedgs
+
+    ! local vars
+    integer :: i
+    type(edg) :: tedg
+    type(ej), pointer :: tej => null()
+
+    do i = 1, size(hl%ejs)
+       tej => hl%ejs(i)
+
+       tedg%x1 = tej%x(1,1); tedg%y1 = tej%x(2,1)
+       tedg%x2 = tej%x(1,2); tedg%y2 = tej%x(2,2)
+       tedg%tag = tej%bc
+
+       call tedgs%add(tedg)
+
+    end do
+
+    ! final settings
+    tedgs%maxtag = 1
+    tedgs%tol = 2.6d-2
+
+    ! done here
+  end subroutine hull2edgs
+
+  ! eliminates inactive interior 
+  ! hulls and renumber the elements
+  ! and connectivities based on
+  ! a contigous (all-active) numbering
+  !
+  subroutine elim_inact_hulls(hls)
+    implicit none
+    type(hulls), intent(inout), target :: hls
+
+    ! local vars
+    integer :: i, hnum, j, k
+    class(hull), pointer :: thull => null()
+    type(hull), dimension(:), allocatable :: tmp
+    class(ej), pointer :: tej => null()
+
+    ! counting the number of hulls
+    hnum = 0
+    do i = 1, size(hls%hl)
+       thull => hls%hl(i)
+       if ( (.not. thull%is_active) &
+            .and. (.not. thull%is_bn) ) cycle
+       hnum = hnum + 1
+    end do
+
+    ! allocate final hulls
+    allocate(tmp(hnum))
+
+    ! renumber accordingly ...
+    hnum = 1
+    do i = 1, size(hls%hl)
+
+       ! skip inactive interior hulls
+       thull => hls%hl(i)
+       if ( (.not. thull%is_active) &
+            .and. (.not. thull%is_bn) ) cycle
+
+       ! update this hull number in all other hulls
+       do j = 1, size(hls%hl)
+
+          thull => hls%hl(j)
+          if ( (.not. thull%is_active) &
+               .and. (.not. thull%is_bn) ) cycle
+
+          do k = 1, size(thull%ejs)
+             tej => thull%ejs(k)
+
+             if (tej%neigh .eq. i) tej%neigh = hnum
+
+          end do
+
+       end do
+
+       ! increase the hull number
+       hnum = hnum + 1 
+
+    end do
+
+
+    ! copy the active or boundary hulls
+    ! into the new temporary hull buffer
+    hnum = 1
+    do i = 1, size(hls%hl)
+
+       ! skip inactive interior hulls
+       thull => hls%hl(i)
+       if ( (.not. thull%is_active) &
+            .and. (.not. thull%is_bn) ) cycle
+
+       tmp(hnum) = thull
+
+       ! increase the hull number
+       hnum = hnum + 1 
+
+    end do
+
+    ! move the temp array into the final result
+    call move_alloc(tmp , hls%hl)
+
+    ! final clean ups
+    if ( allocated(tmp) ) deallocate(tmp)
+    if ( associated(thull)) nullify(thull)
+    if ( associated(tej)) nullify(tej)
+
+    ! done here
+  end subroutine elim_inact_hulls
+
+  ! prints info about the hulls
+  !
+  subroutine print_hulls(hls)
+    implicit none
+    type(hulls), intent(in), target :: hls
+
+    ! local vars
+    integer :: i, j
+    class(hull), pointer :: thull => null()
+    class(ej), pointer :: tej => null()
+
+    do i = 1, size(hls%hl)
+
+       thull => hls%hl(i)
+
+       print *, '-----------------------------------------------------'
+       print *, 'hull # ', i , ' has ', size(thull%ejs) , ' edges! '
+       print *, 'the activation status : ', thull%is_active
+
+       if (thull%is_bn) then
+          print *, 'this is a boundary hull!'
+       else
+          print *, 'this is an interior hull!'
+       end if
+
+       ! print edges
+       do j = 1, size(thull%ejs)
+          tej => thull%ejs(j)
+          print *, 'edge # ', j, ' start : (', tej%x(:, 1) &
+               , ') and end : (', tej%x(:, 2), ').'
+          print *, 'ege%bc = ', tej%bc, 'ege%neigh = ', tej%neigh     
+
+       end do
+
+       print *, '****************************************************'
+
+    end do
+
+    ! cleanups
+    if ( associated(thull)) nullify(thull)
+    if ( associated(tej)) nullify(tej)
+
+    ! done here
+  end subroutine print_hulls
+
+  ! check the angle between two edges using
+  ! dot product and if satisfies the given angle
+  ! in degrees, then return .true. otherwise
+  ! returns .false.
+  !
+  function is_angle_good(ej1, ej2, ang)
+    implicit none
+    type(ej), intent(in) :: ej1, ej2
+    real*8, intent(in) :: ang
+    logical :: is_angle_good
+
+    ! local vars
+    real*8 :: ax, ay, bx, by
+    real*8 :: a_dot_b, norm_a, norm_b, ang0
+
+    ! "a" is alias for edges 1
+    ax = ej1%x(1, 2) - ej1%x(1, 1)
+    ay = ej1%x(2, 2) - ej1%x(2, 1)
+
+    ! "b" is alias for edges 2
+    bx = ej2%x(1, 2) - ej2%x(1, 1)
+    by = ej2%x(2, 2) - ej2%x(2, 1)
+
+    ! compute dot product
+    a_dot_b = ax*bx + ay*by
+    norm_a = sqrt(ax*ax + ay*ay)
+    norm_b = sqrt(bx*bx + by*by)
+
+    ! compute the angle between edges
+    ang0 = (180.0d0 / PI_NUM) * dacos(a_dot_b / (norm_a * norm_b))
+
+    ! decide on angle
+    if ( (ang0 < ang) .or. ( (180.0d0 - ang0) < ang ) ) then
+       is_angle_good = .false.
+    else
+       is_angle_good = .true.
+    end if
+
+    ! done here
+  end function is_angle_good
 
 end module grd2hull

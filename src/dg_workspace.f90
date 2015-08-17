@@ -4,6 +4,14 @@ module dg_workspace
   use spline
   use element_opt_dg2d
 !$  use omp_lib
+  use grd2hull
+  use dunavant
+  use approx_fekete
+  use fem_reordering
+  use quadri_elem
+  use quads
+  use polygauss
+  use fekete
   implicit none
 
   private
@@ -38,6 +46,7 @@ module dg_workspace
      procedure, public :: comp_full_Ax
      procedure, public :: march_euler_implicit
      procedure, public :: tvd_rk
+     procedure, public :: add_hull
   
   end type dg_wspace
 
@@ -47,9 +56,10 @@ module dg_workspace
 contains
 
   ! initilizes the workspace
-  ! HINT : the grid in wspace%grd should already
+  ! HINT : If no hull struct provided then the grid in wspace%grd should already
   ! been allocated and initialized properly
-  subroutine init_wspace(wspace, neqs, gamma, bc_names, bc_vals, tol)
+  subroutine init_wspace(wspace, neqs, gamma, bc_names, bc_vals, tol, hls &
+       , pin, eltypein)
     implicit none
     class(dg_wspace), intent(inout) :: wspace
     integer, intent(in) :: neqs
@@ -57,27 +67,56 @@ contains
     character(len = 128), dimension(:), intent(in) :: bc_names
     real*8, dimension(:, :), intent(in) :: bc_vals
     real*8, intent(in) :: tol
+    class(hulls) , intent(in), optional :: hls
+    integer, dimension(:), intent(in), optional :: pin, eltypein
 
     ! local vars
     integer :: i, nbcs, j
 
     ! bullet proofing ...
     ! check see if the grid wrapper is initialized/allocated
-    ! appropriately 
-    if ( (wspace%grd%nnodesg <= 0) .or. &
-         (.not. allocated(wspace%grd%icon)) ) then
-       print *, '<wspace%grd> not allocated/initialized! stop'
-       stop
+    ! appropriately in the case that no spectral hull struct
+    ! provided by user
+    !
+    if ( present(hls) ) then
+       if ( (.not. allocated(hls%hl)) .or. &
+            (.not. present(pin)) .or. &
+            (.not. present(eltypein)) ) then
+          print *, 'the provided spectral hull struct is not ' &
+               , ' initialized properly or pin and eltypein not provided! stop'
+          stop
+       end if
+    else ! if no hull struct is given then elements are given in wspace%grd
+       if ( (wspace%grd%nnodesg <= 0) .or. &
+            (.not. allocated(wspace%grd%icon)) ) then
+          print *, '<wspace%grd> not allocated/initialized! stop'
+          stop
+       end if
     end if
 
     ! allocate all elements in the workspace
-    allocate(wspace%elems(wspace%grd%ncellsg))
+    if ( .not. present(hls) ) then
+       allocate(wspace%elems(wspace%grd%ncellsg))
+    end if
 
     ! proceed to initialize the elements one by one
-    do i = 1, size(wspace%elems)
-       call wspace%elems(i)%init(wspace%elems(i) &
-            , i, wspace%grd, neqs, gamma)
-    end do
+    if ( .not. present(hls) ) then !use the grd-based initializer
+
+       do i = 1, size(wspace%elems)
+          call wspace%elems(i)%init(wspace%elems(i) &
+               , i, wspace%grd, neqs, gamma)
+       end do
+
+    else
+
+       do i = 1, size(hls%hl)
+          ! subroutine add_hull(wspace, neqs, gamma, hl, pin, eltype_in, tol)
+          call wspace%add_hull(neqs = neqs, gamma = gamma, hl = hls%hl(i) &
+               , pin = pin(i), eltype_in = eltypein(i), tol = tol)
+print *, 'hull #', i, ' is added!' 
+       end do
+
+    end if
 
     ! initializing boundary conditions
     nbcs = size(bc_names)
@@ -96,6 +135,10 @@ contains
        do j = 1, wspace%elems(i)%nedgs
           call wspace%init_edg_quadrat(wspace%elems(i), j, tol)
        end do
+       print *, 'init_edg_quadrat is done for elem # ', i, ' out of ' &
+            , size(wspace%elems), ' elems!', ' elem has ' &
+            , wspace%elems(i)%nedgs, 'edges '
+
     end do
 
     ! done here
@@ -127,8 +170,8 @@ contains
     grd => wspace%grd
     tedg => elem%edgs(iedg)
     tag = tedg%tag
-
-    if ( tag .ne. 0 ) then
+print *, 'tagtag = ', tag
+    if ( (tag .ne. 0) .and. (.not. grd%linear_boundaries) ) then
        ! is a boundary element 
        do_snap = .true.
        tcurve => grd%bn_curves(tag)
@@ -140,7 +183,7 @@ contains
     do j = 1, size(tedg%neighs) ! loop over all neighbors to that edge (shared segments)
 
        tneigh => tedg%neighs(j) ! select this neighbor 
-
+print *, 'tneigh = ', tneigh%elnum
        ! find the maximum number of 1d interpolation (Lagrange) points per this shared 
        ! segment with the j^th neighbor of this edge.
        !
@@ -156,7 +199,7 @@ contains
        end if
 
        ! degree of exactness relation for 1d Gauss legendre: 2r - 1 = max_npedg -1
-       r = nint(3.5d0 * dble(max_npedg) / dble(2)) ! 3.5 is safety factor :)
+       r = ceiling((2.0d0 * dble(elem%p) + 2.0d0) / 2.0d0) 
        tneigh%ngpseg = r
 
        ! allocate neigh specific arrays
@@ -189,6 +232,8 @@ contains
        x1 = tneigh%xs(1); x2 = tneigh%xe(1) 
        y1 = tneigh%xs(2); y2 = tneigh%xe(2) 
 
+print *, 'x1 = ', x1, 'x2 = ', x2, 'y1 = ', y1, 'y2 = ', y2
+print*, 'elem%x = ', elem%x
        ! find the constant derivatives
        xdot = 0.5d0 * (x2 - x1)
        ydot = 0.5d0 * (y2 - y1)
@@ -1509,5 +1554,549 @@ print *, 'itr = ', itr
 
     ! done here
   end subroutine tvd_rk
+
+  ! adds a spectral hull to the end of element-array
+  ! of the current workspace
+  !
+  subroutine add_hull(wspace, neqs, gamma, hl, pin, eltype_in, tol)
+    implicit none
+    class(dg_wspace), intent(inout) :: wspace
+    integer, intent(in) :: neqs
+    real*8, intent(in) :: gamma
+    type(hull), intent(in) :: hl
+    integer, intent(in) :: pin, eltype_in
+    real*8, intent(in) :: tol
+
+    ! local vars
+    integer :: ii, jj, pt1, pt2, last_pt, int1, int2
+    integer :: rule, degree, order_num, n_quad2d_w, ielem
+    real*8, dimension(:, :), allocatable :: xy, ar, xyw
+    type(element_dg2d) :: elem
+    type(fekete) :: tfekete
+    real*8, dimension(:), allocatable :: PP, QQ, xx, yy
+    character(len = 120) :: method_name
+    real*8 :: x0, y0
+    type(element_dg2d), dimension(:), allocatable :: tmp_elems
+    integer, dimension(:), allocatable :: pts
+    type(edgs) :: tedgs0
+    real*8, dimension(:), allocatable :: xnew, ynew 
+
+    ! basic init of some parameters
+    ! ----------------------------------------
+
+    elem%neqs = neqs
+    elem%gamma = gamma
+    elem%p = pin
+    ! set the type of the element(Lagrange, Fekete, more ...)
+    elem%eltype = eltype_in
+    elem%npedg = elem%p + 1 ! init p=0,1
+
+    ! determine the name of the hull
+    if ( size(hl%ejs) .eq. 3 ) then
+       elem%elname = GEN_TRIANGLE
+    elseif ( size(hl%ejs) .eq. 4 ) then
+       elem%elname = GEN_QUADRI
+    else
+       elem%elname = GEN_SPHULL
+    end if
+
+
+    ! first get the border (frame) of the current hull
+    call hull2array(hl, ar)
+
+    ! snap boundary points to the boundary curves
+    ! if they are not already on the curve
+    call snap2curve(wspace%grd, tol)
+    print *, 'done snapping!'
+
+    ! compute interpolation points in the master element
+    ! ----------------------------------------
+
+    select case ( elem%elname )
+
+    case (GEN_TRIANGLE) 
+
+       ! select the coefficient of the Jacobian of the transformation
+       elem%coeff = 0.5d0
+       elem%nedgs = 3
+
+       if ( elem%eltype .eq. 0 ) then
+          ! generate general n-points Lagrange element
+          call coord_tri(elem%p, xx, yy)
+          elem%npe = size(xx)
+          allocate(elem%x_loc(2, elem%npe))
+          elem%x_loc(1, :) = xx
+          elem%x_loc(2, :) = yy
+          ! little cleanup
+          if ( allocated(xx) ) deallocate(xx)
+          if ( allocated(yy) ) deallocate(yy)
+
+       elseif ( (elem%eltype .eq. 1) &
+            .and. (elem%p <= 11) ) then
+
+          ! Exact Fekete Triangle Element
+
+          call fekete_degree2rule( elem%p, rule)
+          call fekete_order_num( rule, elem%npe)
+          allocate(elem%x_loc(2, elem%npe))
+          allocate(yy(elem%npe))
+          ! compute the absicca and weights for fekete
+          call fekete_rule( rule, elem%npe, elem%x_loc, yy )
+          ! little cleanup
+          if ( allocated(yy) ) deallocate(yy)
+       else
+          print *, 'type of given GEN_TRIANGLE element is unknown! stop'
+          stop
+       end if
+
+       ! reorder Lagrange points vertex/edge/bubble to prevent Negative Jacobian
+       call fem_reorder(xy = elem%x_loc, tol = tol)
+
+    case (GEN_QUADRI) 
+
+       ! select the coefficient of the Jacobian of the transformation
+       elem%coeff = 1.0d0
+       elem%nedgs = 4
+
+       !lagrange quadrilateral
+
+       if ( elem%eltype .eq. 0 ) then !Lagrange quad2d
+          method_name = 'equal_space'
+       elseif ( elem%eltype .eq. 1 ) then !Chebyshev quad2d
+          method_name = 'cheby'
+       else
+          print *, 'type of given GEN_QUADRI element is unknown! stop'
+          stop
+       end if
+
+       order_num = elem%p + 1
+       allocate(PP(order_num))
+       call pt_dist_1d(n = order_num, xmin = -1.0d0 &
+            , xmax = 1.0d0, method = method_name, x = PP)
+
+       call fill_elem_coords(x1 = PP, x2= PP, x= xx, y = yy)
+       elem%npe = size(xx)
+       allocate(elem%x_loc(2, elem%npe))
+       elem%x_loc(1, :) = xx
+       elem%x_loc(2, :) = yy
+
+       ! little cleanup
+       if (allocated(PP)) deallocate(PP)
+       if (allocated(xx)) deallocate(xx)
+       if (allocated(yy)) deallocate(yy)
+
+
+    case (GEN_SPHULL) ! general Fekete Element 
+
+       ! select the coefficient of the Jacobian of the transformation
+       elem%coeff = 1.0d0
+       elem%nedgs = size(hl%ejs)
+
+       if ( elem%eltype .eq. 0 ) then !Fekete Greedy Algorithm (Base)
+
+          ! convert hull to edgs
+          call hull2edgs(hl, tedgs0)
+          ! init and comp approximate Fekete points
+          call tfekete%init(d = elem%p, name = 'custom2d' &
+               , s = 3, tedgs = tedgs0)
+          ! copy coordinates to local coords x_loc
+          elem%npe = size(tfekete%fin_coords, 2)
+elem%p = nint(sqrt(dble(elem%npe)))
+    elem%npedg = elem%p + 1 ! init p=0,1
+print *, 'hllll ---------------->', elem%npe, elem%p
+          allocate(elem%x_loc(2, elem%npe))
+          elem%x_loc(1, :) = tfekete%fin_coords(1, :)
+          elem%x_loc(2, :) = tfekete%fin_coords(2, :)
+
+          ! dynamically clean fekete object
+          ! to prevent memory leak 
+          call tfekete%clean()
+
+       elseif ( elem%eltype .eq. 6 ) then ! Radial basis functions 
+
+       else
+
+          print *, 'type of given GEN_SPHULL element is unknown! stop'
+          stop
+       end if
+
+    case default
+
+       print *, 'unknown name of the hull! stop'
+       stop
+    end select
+
+    ! compute required quadrature points and weights
+    ! ----------------------------------------
+
+    ! compute the "order_num" or number of Gauss points
+    rule = int(2.0d0 * pin) ! infact it should be "p" for linear
+    ! Laplace equation for constant shape elements 
+    ! but since we've got rational function 
+    ! for curvilinear elements, then we put 
+    ! it 2*p for safety.
+    ! NOTE : in general this is not correct
+    !
+    ! compute total number of Gauss-Legendre weights for quad2d
+    call p2n(etype = 2, p = rule, n = n_quad2d_w)
+
+    if ( (size(hl%ejs) .eq. 3) .and. (elem%p <= 9 ) ) then !triangle
+       ! check to see the order of exactness is available
+       ! in the tables for the given rule
+       call dunavant_degree ( rule, degree )
+
+       ! compute the number of required Gauss points
+       call dunavant_order_num( rule, order_num )
+       elem%ngauss = order_num
+
+       ! allocate space for that
+       allocate( xy(2,order_num))
+       allocate(elem%r(order_num), elem%s(order_num), elem%W(order_num))
+
+       ! compute the absicca and weights for that rule
+       call dunavant_rule( rule, order_num, xy, elem%W )
+       elem%r = xy(1,:)
+       elem%s = xy(2,:)
+       deallocate(xy)
+
+    elseif (size(hl%ejs) .eq. 4) then !quad
+
+       ! use tensor product gauss quadrature 
+       ! for more accurate result
+
+       ! allocate space for that
+       elem%ngauss = n_quad2d_w
+       allocate(elem%r(elem%ngauss), elem%s(elem%ngauss), elem%W(elem%ngauss))
+
+       call get_quad(etype = 2, n = elem%ngauss &
+            , alpha = 0.0d0, beta = 0.0d0, r = elem%r, s = elem%s, W = elem%W)
+
+       ! ! find the spatial coordinates of fekete points
+       ! call tfekete%init(d = rule, name = 'quadri', s=3 &
+       !      , spacing='equal_space', echo = .true.)
+
+       !       elem%ngauss = size(tfekete%w)
+
+       ! elem%r = tfekete%fin_coords(1, :)
+       ! elem%s = tfekete%fin_coords(2, :)
+       ! elem%W = tfekete%w
+
+       ! ! deallocate stuff in tfekete object
+       ! call tfekete%clean()
+
+    else ! any other convex hull (general sided element)
+
+       ! subroutine polygon_gauss_leg(N, polygon_sides, P, Q, xyw, rotation)
+       call polygon_gauss_leg(N = (2*elem%p + 1), polygon_sides = ar &
+            , P = PP, Q = QQ, xyw = xyw, rotation = 1)
+       ! then store the computed Gauss-like quadrature points
+       elem%ngauss = size(xyw, 1)
+       allocate(elem%r(elem%ngauss), elem%s(elem%ngauss), elem%W(elem%ngauss))
+       elem%r = xyw(:, 1)
+       elem%s = xyw(:, 2)
+       elem%W = xyw(:, 3)
+       ! little clean up
+       if ( allocated(PP) ) deallocate(PP)
+       if ( allocated(QQ) ) deallocate(QQ)
+       if ( allocated(xyw) ) deallocate(xyw)
+
+    end if
+
+    ! 
+    !
+    ! allocate and init edges and neighbors
+    ! this is NOT a complete edge allocation, later
+    ! the edges will be allocated/initialized completely 
+    if ( allocated(elem%edgs) ) deallocate(elem%edgs)
+    allocate(elem%edgs(elem%nedgs))
+    do ii = 1, elem%nedgs
+       allocate(elem%edgs(ii)%neighs(1))
+       elem%edgs(ii)%neighs(1)%elnum = hl%ejs(ii)%neigh
+print *, 'neigh ', hl%ejs(ii)%neigh, ' is added to edge ', ii, ' of hull # ', elem%number
+       elem%edgs(ii)%tag = hl%ejs(ii)%bc
+    end do
+
+
+    ! elem%x_loc(1, :) = grd%maselem(ielem)%xi
+    ! elem%x_loc(2, :) = grd%maselem(ielem)%eta
+
+
+    ! initialize the stiffness matrix
+    allocate(elem%K(elem%neqs,elem%neqs, elem%npe, elem%npe))
+    allocate(elem%M(elem%neqs,elem%neqs, elem%npe, elem%npe))
+    elem%K = 0.0d0
+    elem%M = 0.0d0
+
+    ! allocating and initializing rhs
+    allocate(elem%Q(elem%neqs,elem%npe))
+    allocate(elem%f(elem%neqs,elem%npe))
+    elem%Q = 0.0d0
+    elem%f = 0.0d0
+
+
+    ! now set elem%x
+    ! transform elem coords if higher order 
+    ! interpolation points are available for curved
+    ! triangle and quadrilateral
+    ! ------------------------------------------------------
+
+    if( allocated(elem%x) ) deallocate(elem%x)
+    allocate( elem%x(2, elem%npe) )
+    elem%x = 0.0d0 ! safe init
+
+    allocate(xnew(elem%npe), ynew(elem%npe))
+    xnew = 0.0d0
+    ynew = 0.0d0
+
+    ! now perform element specific operations
+    select case ( elem%elname )
+
+    case (GEN_TRIANGLE) 
+
+
+       ! init the p1 vertices
+       elem%x(1:2, 1:3) = transpose(ar(1:3,:))
+
+       ! then transform to the physical element coordinates
+       ! using exact transformation
+       do ii = 1, elem%npe
+          ! subroutine transform_tri(elem, grd, xi, eta, x, y, tol)
+          call elem%transform_tri(grd=wspace%grd, xi = elem%x_loc(1, ii) &
+               , eta = elem%x_loc(2, ii) , x = xnew(ii) &
+               , y = ynew(ii), tol = tol)
+       end do
+
+elem%x(1, :) = xnew
+elem%x(2, :) = ynew
+
+    case (GEN_QUADRI)
+
+       ! init the p1 vertices
+       elem%x(1:2, 1:4) = transpose(ar(1:4,:))
+
+
+       ! then transform to the physical element coordinates
+       ! using exact transformation
+       do ii = 1, elem%npe
+
+          ! subroutine transform_quadri(elem, grd, xi, eta, x, y, tol)
+          call elem%transform_quadri(grd=wspace%grd, xi = elem%x_loc(1, ii) &
+               , eta = elem%x_loc(2, ii), x = xnew(ii) &
+               , y = ynew(ii), tol = tol)
+
+       end do
+
+elem%x(1, :) = xnew
+elem%x(2, :) = ynew
+
+    case (GEN_SPHULL)
+
+       ! no transformation is possible
+       ! because of complexity of the shape of the
+       ! spectral hull. So the local coordinates(master element)
+       ! are infact the physical coordinates and later the 
+       ! Jacobian of the transformation should be set to 1.
+       !
+       ! allocate(elem%x(size(elem%x_loc, 1), size(elem%x_loc, 2)))
+       elem%x = elem%x_loc 
+
+    case default
+
+       print *, 'unknown name of the hull in specifying the ' &
+            , '  border physical coords! stop'
+       stop
+
+    end select
+
+
+    ! allocate and initialize the local matrices
+    ! subroutine alloc_init_loc_matrices(elem, npe, neqs)
+    ! --------------------------------------------
+    call elem%alloc_init_loc_matrices(elem%npe, elem%neqs)
+
+    ! initializing the basis functions and their derivatives
+    ! ----------------------------------------
+    select case (elem%elname)
+    case (GEN_TRIANGLE, GEN_QUADRI)
+       call elem%tbasis%init(elem%x_loc(1,:), elem%x_loc(2,:) &
+            , elem%elname)
+    case (GEN_SPHULL)
+       call elem%tbasis%init(x = elem%x_loc(1,:), y = elem%x_loc(2,:) &
+            , elname = 2)
+print *, 'hello!!!'
+    case default
+       print *, 'unknown name of the element in initializing the basis! stop'
+       stop
+    end select
+
+    allocate(elem%psi(elem%npe,elem%ngauss) &
+         , elem%d_psi_d_xi(elem%npe,elem%ngauss) &
+         , elem%d_psi_d_eta(elem%npe,elem%ngauss) )
+
+    ! evaluating the basis function and their derivatives at 
+    ! Gauss - Legendre (quadrature) points and then storing
+    do ii = 1, elem%ngauss
+       x0 = elem%r(ii)
+       y0 = elem%s(ii) 
+       call elem%tbasis%eval(x0, y0, 0,  elem%psi(:,ii)        )
+       call elem%tbasis%eval(x0, y0, 1,  elem%d_psi_d_xi(:,ii) )
+       call elem%tbasis%eval(x0, y0, 2,  elem%d_psi_d_eta(:,ii))
+    end do
+
+    ! allocate Jacobian of transformation
+    allocate(elem%jac(2,2, elem%ngauss), elem%Jstar(2,2, elem%ngauss) )
+    allocate(elem%JJ(elem%ngauss) )
+
+    ! compute the Jacobian of transformation matrix , its inverse and
+    ! the value of Jacobian at each Gauss-Legendre point 
+    do ii = 1, elem%ngauss
+       ! call comp_Jstar(grd, elem, ielem, i, elem%jac(:,:,i) &
+       !      , elem%Jstar(:,:,i), elem%JJ(i) )
+       ! subroutine comp_Jstar_point_dg(elem, r, s, jac, Jstar, JJ)
+    select case (elem%elname)
+    case (GEN_TRIANGLE, GEN_QUADRI)
+
+       call elem%comp_metric_jacobian(r = elem%r(ii), s = elem%s(ii)&
+            ,jac = elem%jac(:,:,ii), Jstar = elem%Jstar(:,:,ii) &
+            , JJ = elem%JJ(ii))
+    case (GEN_SPHULL)
+
+elem%jac(:,:,ii) = reshape( (/ 1.0d0, 0.0d0, 0.0d0, 1.0d0 /), (/ 2 , 2 /) )
+elem%Jstar(:,:,ii) = elem%jac(:,:,ii)
+elem%JJ(ii) = 1.0d0
+ 
+    case default
+       print *, 'unknown name of the element in comp metric jacobians! stop'
+       stop
+
+    end select
+
+    end do
+
+    ! compute the derivatives of basis functions
+    call elem%comp_dpsi()
+
+    !
+    ! allocate/init neighbors (initially one neighbor!)
+    ! -------------------------------------------------------------
+    ! determine the start and the end of the segments shared with neighbors
+    do ii = 1, elem%nedgs
+       ! ! allocate(elem%edgs(ii)%neighs(1))
+       ! pt1 = ii
+       ! pt2 = ii + 1
+       ! if ( ii .eq. elem%nedgs ) pt2 = 1
+       elem%edgs(ii)%neighs(1)%xs = hl%ejs(ii)%x(:,1) !elem%x(:, pt1)
+       elem%edgs(ii)%neighs(1)%xe = hl%ejs(ii)%x(:,2) !elem%x(:, pt2) 
+    end do
+
+
+    ! adding points per edge
+    if ( elem%p > 0 ) then ! we have points on the edges 
+
+       last_pt = elem%nedgs + 1
+       allocate(pts(elem%npedg))
+
+       do ii = 1, size(elem%edgs)
+          pt1 = ii
+          pt2 = ii + 1
+          if ( ii .eq. size(elem%edgs) ) pt2 = 1
+
+          if ( elem%p >= 2 ) then !higher order elements
+             int1 = last_pt
+             int2 = last_pt + elem%npedg - 3
+             pts = (/ pt1, (/ (jj, jj = int1, int2) /) , pt2 /)
+             last_pt = int2 + 1
+          else
+             pts = (/ pt1, pt2 /)
+          end if
+
+          allocate(elem%edgs(ii)%pts(elem%npedg))
+          elem%edgs(ii)%pts = pts                
+       end do
+
+       deallocate(pts)
+    end if
+
+    ! specify the tag of the edges
+    do ii = 1, size(elem%edgs)
+       elem%edgs(ii)%tag = hl%ejs(ii)%bc
+    end do
+
+
+    ! compute and store mass matrix and its LU info
+    call elem%comp_mass()
+
+    ! compute source term for MMS
+    call elem%comp_source()
+
+
+    ! initialization terminated successfully!
+    elem%init_lock = 1221360 !locked
+
+    ! now attach this fully initialized elem 
+    ! to the end of wspace%elems
+    ! -----------------------------------------------------
+    ! determine the size of the current element array
+    if ( .not. allocated(wspace%elems) ) then
+       ielem = 1
+    else
+       ! more bullet proof
+       if ( size(wspace%elems) .eq. 0 ) then
+          print *, 'wspace%elems is allocated BUT its size is zero!!! stop'
+          stop
+       end if
+       ielem = size(wspace%elems) + 1
+    end if
+    elem%number = ielem
+    ! prepare for dynamic allocation
+    allocate(tmp_elems(ielem))
+    ! transfer data
+    if ( ielem .eq. 1 ) then
+       tmp_elems(1) = elem
+    else
+       tmp_elems(1:(ielem-1)) = wspace%elems(1:(ielem-1))
+       tmp_elems(ielem) = elem
+    end if
+
+    ! deallocate inside wspace%elems
+    if ( allocated(wspace%elems) ) then
+       do ii = 1, size(wspace%elems)
+          call wspace%elems(ii)%dealloc_elem()
+       end do
+    end if
+    ! deallocate outside
+    if ( allocated(wspace%elems) ) deallocate(wspace%elems)
+    ! new size
+    allocate( wspace%elems(ielem) )
+    ! take a copy
+    wspace%elems = tmp_elems
+
+    ! deallocate inside tmp_elems
+    if ( allocated(tmp_elems) ) then
+       do ii = 1, size(tmp_elems)
+          call tmp_elems(ii)%dealloc_elem()
+       end do
+    end if
+    ! deallocate outside
+    if ( allocated(tmp_elems) ) deallocate(tmp_elems)
+
+
+
+
+    ! clean ups
+    if (allocated(xy)) deallocate(xy)
+    if (allocated(ar)) deallocate(ar)
+    if (allocated(xyw)) deallocate(xyw)
+    if (allocated(PP)) deallocate(PP)
+    if (allocated(QQ)) deallocate(QQ)
+    if (allocated(xx)) deallocate(xx)
+    if (allocated(yy)) deallocate(yy)
+    if (allocated(tmp_elems)) deallocate(tmp_elems)
+    if (allocated(pts)) deallocate(pts)
+    if (allocated(xnew)) deallocate(xnew)
+    if (allocated(ynew)) deallocate(ynew)
+
+    ! done here
+  end subroutine add_hull
 
 end module dg_workspace

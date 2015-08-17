@@ -42,7 +42,7 @@ contains
 
     case (2) ! quad 
 
-       nx = ceiling( dble(p+1)/(2.0D0) )
+       nx = ceiling( dble(p+3)/(2.0D0) )
        n = nx * nx
 
     case default

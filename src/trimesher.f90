@@ -63,6 +63,7 @@ module trimesher
 
   public :: meshit, trigen, mesh_a_triangle, mesh_a_quadri, add_to_cons
   public :: trigen_based_TETREX
+  public :: meshit_visual
 
 contains
 
@@ -894,6 +895,173 @@ contains
 
     ! done here
   end subroutine trigen_based_TETREX
+
+  ! meshes a region given by the set of connectors 
+  ! and returns the results in grid object "grd"
+  !
+  ! NOTE:
+  ! this should be used only with visualization subroutines
+  ! because it only returns triangulation not boundary edges info
+  !
+  subroutine meshit_visual(cmd_arg_string_in, pts, cons, holes &
+       , report_before_in, report_after_in, grd)
+    implicit none
+    character (len = *), intent(in) :: cmd_arg_string_in
+    type(point), dimension(:), intent(in) :: pts
+    type(connector), dimension(:), intent(in) :: cons
+    type(point), dimension(:), intent(in) :: holes
+    integer, intent(in) :: report_before_in, report_after_in
+    type(grid), intent(inout) :: grd
+
+
+    ! local vars
+    character (kind = c_char, len = 200) :: cmd_arg_string
+    integer (c_int) :: report_before, report_after
+    integer (c_int) :: numberofpoints
+    real (c_double), dimension(:), allocatable :: pointlist
+    integer (c_int) :: numberofsegments 
+    integer (c_int), dimension(:), allocatable  :: segmentlist, segmentmarkerlist
+    integer (c_int) :: numberofholes
+    real (c_double), dimension(:), allocatable  :: holelist
+
+    integer(c_int), parameter :: default_numberofpoints = 500000
+    integer(c_int), parameter :: default_numberoftriangles = 500000
+    integer(c_int), parameter :: default_numberofsegments = 500000
+
+    ! outputs
+    integer(c_int) :: new_numberofpoints
+    ! real(c_double) :: new_pointlist(2 * default_numberofpoints)
+    real(c_double), allocatable :: new_pointlist(:)
+    integer(c_int) :: numberoftriangles
+    integer(c_int) :: numberofcorners
+    ! integer(c_int) :: trianglelist(default_numberoftriangles*3)
+    ! integer(c_int) :: neighborlist(default_numberoftriangles*3)
+    integer(c_int), allocatable :: trianglelist(:)
+    integer(c_int), allocatable :: neighborlist(:)
+    integer(c_int) :: new_numberofsegments
+    ! integer(c_int) :: new_segmentlist(2*default_numberofsegments)
+    ! integer(c_int) :: new_segmentmarkerlist(default_numberofsegments)
+    integer(c_int), allocatable :: new_segmentlist(:)
+    integer(c_int), allocatable :: new_segmentmarkerlist(:)
+
+    ! indices
+    integer :: ii
+
+    ! HEAP allocation
+    allocate(new_pointlist(2 * default_numberofpoints))
+    allocate(trianglelist(default_numberoftriangles*3))
+    allocate(neighborlist(default_numberoftriangles*3))
+    allocate(new_segmentlist(2*default_numberofsegments))
+    allocate(new_segmentmarkerlist(default_numberofsegments))
+
+
+    ! initialization
+    cmd_arg_string = cmd_arg_string_in//C_NULL_CHAR 
+    report_before = report_before_in; report_after = report_after_in
+
+    numberofpoints = size(pts)
+    allocate(pointlist(2*numberofpoints))
+    numberofsegments = size(cons) 
+    allocate(segmentlist(2*numberofsegments), segmentmarkerlist(numberofsegments))
+    numberofholes = size(holes)
+    allocate(holelist(2*numberofholes))
+
+
+    ! cmd_arg_string = 'punq35.0'
+    !cmd_arg_string = 'pn'
+
+    ! filling out point list
+    do ii = 1, numberofpoints
+       pointlist(2 * ii - 1) = pts(ii)%x
+       pointlist(2 * ii    ) = pts(ii)%y
+    end do
+
+    ! filling out segment list
+    do ii = 1, numberofsegments
+       segmentlist(2 * ii - 1) = cons(ii)%pt1%tag
+       segmentlist(2 * ii    ) = cons(ii)%pt2%tag
+       ! filling out segment marker list
+       segmentmarkerlist(ii) = cons(ii)%tag
+    end do
+
+    do ii = 1, size(holes)
+       holelist( 2 * ii - 1 ) = holes(ii)%x
+       holelist( 2 * ii     ) = holes(ii)%y
+    end do
+
+    call trimesh(cmd_arg_string, numberofpoints, pointlist, &
+         numberofsegments, segmentlist, &
+         segmentmarkerlist, numberofholes, &
+         holelist, report_before, report_after, &
+         default_numberofpoints, default_numberoftriangles, default_numberofsegments, &
+         new_numberofpoints, new_pointlist, &
+         numberoftriangles, numberofcorners, trianglelist, neighborlist, &
+         new_numberofsegments, new_segmentlist, &
+         new_segmentmarkerlist)
+
+
+    ! print *, 'new_numberofpoints = ', new_numberofpoints
+    ! print *, 'new_pointlist = ', new_pointlist(1:(2*new_numberofpoints))
+    ! print *, 'numberofcorners = ', numberofcorners  
+    ! print *, 'trianglelist = ', trianglelist(1:(numberofcorners*numberoftriangles))
+    ! print *, 'neighborlist = ', neighborlist(1:(3*numberoftriangles))
+    ! print *, 'new_numberofsegments = ', new_numberofsegments
+    ! print *, 'new_segmentlist = ', new_segmentlist(1:(2*new_numberofsegments))
+    ! print *, 'new_segmentmarkerlist = ', new_segmentmarkerlist(1:new_numberofsegments)
+
+    ! bug checking
+    if (numberoftriangles .eq. 0) then
+       print *,'error : no triangle is generated! stopped!'
+       stop
+    end if
+
+    if (numberofcorners > 3) then
+       print *, 'error : higher order triangular elements not implemented in this version'
+       print *, 'check meshit(...) subroutine for more info. stopped'
+       stop
+    end if
+
+    ! lets put everything back into the grid object
+    grd%nnodesg = new_numberofpoints
+    grd%ncellsg = numberoftriangles
+    grd%nbedgeg = new_numberofsegments
+    grd%ntri = grd%ncellsg
+    grd%nquad4 = 0
+    allocate(grd%x(new_numberofpoints), grd%y(new_numberofpoints))
+    do ii = 1, new_numberofpoints
+       grd%x(ii) = new_pointlist(2 * ii - 1)
+       grd%y(ii) = new_pointlist(2 * ii    )
+    end do
+
+    allocate(grd%icon(numberoftriangles, 3))
+    do ii = 1, numberoftriangles
+       grd%icon(ii, 1) = trianglelist(3*ii-2)
+       grd%icon(ii, 2) = trianglelist(3*ii-1)
+       grd%icon(ii, 3) = trianglelist(3*ii  )
+    end do
+
+
+    grd%meshFile = 'nofile'
+
+
+
+    grd%galtype = 'PG' !Petrov-Galerkin by default
+
+    ! final clean ups
+    ! HEAP deallocation
+    if (allocated(new_pointlist)) deallocate(new_pointlist)
+    if (allocated(trianglelist)) deallocate(trianglelist)
+    if (allocated(neighborlist)) deallocate(neighborlist)
+    if (allocated(new_segmentlist)) deallocate(new_segmentlist)
+    if (allocated(new_segmentmarkerlist)) deallocate(new_segmentmarkerlist)
+
+    if (allocated(pointlist)) deallocate(pointlist)
+    if (allocated(segmentlist)) deallocate(segmentlist)
+    if (allocated(segmentmarkerlist)) deallocate(segmentmarkerlist)
+    if (allocated(holelist)) deallocate(holelist)
+
+    ! done here
+  end subroutine meshit_visual
 
 end module trimesher
 
