@@ -535,16 +535,17 @@ contains
     real*8, dimension(2), save :: der, F, delta
     real*8, dimension(2,2), save:: JJ, Jinv
 
-print *, ' size(elem%edgs) = ', size(elem%edgs)
+! print *, ' size(elem%edgs) = ', size(elem%edgs)
 
-if ( elem%elname .eq. GEN_SPHULL ) then
-r = x
-s = y
-return
-end if
+! if ( elem%elname .eq. GEN_SPHULL ) then
+! r = x
+! s = y
+! return
+! end if
 
     ! initial guess
-    r = 0.25d0; s =0.25d0
+!     r = 0.25d0; s =0.25d0
+    r = sum(elem%r)/size(elem%r); s = sum(elem%s)/size(elem%s)
     npt = elem%npe
 
     do j = 1, maxitr ! main Newton iteration loop
@@ -595,7 +596,7 @@ end if
              ! print *, '(r,s) = ', r, s ,' out of range! stop.'
              ! stop 
           end if
-          ! print *, 'j = ', j , 'error = ', sqrt(sum(delta*delta))
+!           print *, 'jqjqq = ', j , 'error = ', sqrt(sum(delta*delta)), 'elem%number = ', elem%number, 'tol = ', tolrs
           return
        end if
 

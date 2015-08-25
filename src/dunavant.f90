@@ -5,7 +5,7 @@ module dunavant
 
   public :: dunavant_order_num, dunavant_rule
   public :: triangle_points_plot, dunavant_degree
-
+  public :: triangle_area
 
 contains
 

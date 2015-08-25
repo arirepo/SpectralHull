@@ -12,6 +12,7 @@ module dg_workspace
   use quads
   use polygauss
   use fekete
+  use triangulation_quad
   implicit none
 
   private
@@ -1570,7 +1571,7 @@ print *, 'itr = ', itr
     ! local vars
     integer :: ii, jj, pt1, pt2, last_pt, int1, int2
     integer :: rule, degree, order_num, n_quad2d_w, ielem
-    real*8, dimension(:, :), allocatable :: xy, ar, xyw
+    real*8, dimension(:, :), allocatable :: xy, ar, xyw, ar2
     type(element_dg2d) :: elem
     type(fekete) :: tfekete
     real*8, dimension(:), allocatable :: PP, QQ, xx, yy
@@ -1701,7 +1702,7 @@ print *, 'itr = ', itr
                , s = 3, tedgs = tedgs0)
           ! copy coordinates to local coords x_loc
           elem%npe = size(tfekete%fin_coords, 2)
-elem%p = nint(sqrt(dble(elem%npe)))
+elem%p = nint(sqrt(dble(elem%npe)))-1
     elem%npedg = elem%p + 1 ! init p=0,1
 print *, 'hllll ---------------->', elem%npe, elem%p
           allocate(elem%x_loc(2, elem%npe))
@@ -1741,6 +1742,33 @@ print *, 'hllll ---------------->', elem%npe, elem%p
     call p2n(etype = 2, p = rule, n = n_quad2d_w)
 
     if ( (size(hl%ejs) .eq. 3) .and. (elem%p <= 9 ) ) then !triangle
+
+! allocate(ar2(4,2))
+! ar2(1, :) = (/ 0.0d0, 0.0d0 /)
+! ar2(2, :) = (/ 1.0d0, 0.0d0 /)
+! ar2(3, :) = (/ 0.0d0, 1.0d0 /)
+! ar2(4, :) = (/ 0.0d0, 0.0d0 /)
+
+!        ! subroutine polygon_gauss_leg(N, polygon_sides, P, Q, xyw, rotation)
+!        call polygon_gauss_leg(N = (2*elem%p + 1), polygon_sides = ar2 &
+!             , P = PP, Q = QQ, xyw = xyw)
+!        ! then store the computed Gauss-like quadrature points
+!        elem%ngauss = size(xyw, 1)
+!        allocate(elem%r(elem%ngauss), elem%s(elem%ngauss), elem%W(elem%ngauss))
+!        elem%r = xyw(:, 1)
+!        elem%s = xyw(:, 2)
+!        elem%W = xyw(:, 3)
+!        elem%W = 2.0d0 * elem%W
+! ! print *, 'elem%r = ', elem%r 
+! ! print *, 'elem%s = ', elem%s 
+! ! print *, 'elem%W = ', elem%W  
+! ! stop
+!        ! little clean up
+!        if ( allocated(PP) ) deallocate(PP)
+!        if ( allocated(QQ) ) deallocate(QQ)
+!        if ( allocated(xyw) ) deallocate(xyw)
+
+! ---------
        ! check to see the order of exactness is available
        ! in the tables for the given rule
        call dunavant_degree ( rule, degree )
@@ -1758,6 +1786,36 @@ print *, 'hllll ---------------->', elem%npe, elem%p
        elem%r = xy(1,:)
        elem%s = xy(2,:)
        deallocate(xy)
+
+! print *, 'r = ', elem%r
+! print *, 's = ', elem%s
+! print *, 'W = ', elem%W
+! print *, 'sum = ', sum(elem%W)
+! stop
+
+! ---------
+       ! subroutine gen_triang_quad(order, ar, xy, W)
+! allocate(ar2(4,2))
+! ar2(1, :) = (/ 0.0d0, 0.0d0 /)
+! ar2(2, :) = (/ 1.0d0, 0.0d0 /)
+! ar2(3, :) = (/ 0.0d0, 1.0d0 /)
+! ar2(4, :) = (/ 0.0d0, 0.0d0 /)
+
+!        call gen_triang_quad(rule, ar2, xy, elem%W)
+!        elem%ngauss = size(elem%W)
+!        allocate(elem%r(elem%ngauss), elem%s(elem%ngauss))
+!        elem%r = xy(1,:)
+!        elem%s = xy(2,:)
+!        elem%W = 2.0d0 * elem%W
+ 
+! print *, 'r = ', elem%r
+! print *, 's = ', elem%s
+! print *, 'W = ', elem%W
+! print *, 'sum = ', sum(elem%W)
+! ! stop
+!        deallocate(xy)
+! if (allocated(ar2)) deallocate(ar2)
+
 
     elseif (size(hl%ejs) .eq. 4) then !quad
 
@@ -1786,19 +1844,34 @@ print *, 'hllll ---------------->', elem%npe, elem%p
 
     else ! any other convex hull (general sided element)
 
-       ! subroutine polygon_gauss_leg(N, polygon_sides, P, Q, xyw, rotation)
-       call polygon_gauss_leg(N = (2*elem%p + 1), polygon_sides = ar &
-            , P = PP, Q = QQ, xyw = xyw, rotation = 1)
-       ! then store the computed Gauss-like quadrature points
-       elem%ngauss = size(xyw, 1)
-       allocate(elem%r(elem%ngauss), elem%s(elem%ngauss), elem%W(elem%ngauss))
-       elem%r = xyw(:, 1)
-       elem%s = xyw(:, 2)
-       elem%W = xyw(:, 3)
-       ! little clean up
-       if ( allocated(PP) ) deallocate(PP)
-       if ( allocated(QQ) ) deallocate(QQ)
-       if ( allocated(xyw) ) deallocate(xyw)
+       ! ! subroutine polygon_gauss_leg(N, polygon_sides, P, Q, xyw, rotation)
+       ! call polygon_gauss_leg(N = (2*elem%p + 1), polygon_sides = ar &
+       !      , P = PP, Q = QQ, xyw = xyw, rotation = 1)
+       ! ! then store the computed Gauss-like quadrature points
+       ! elem%ngauss = size(xyw, 1)
+       ! allocate(elem%r(elem%ngauss), elem%s(elem%ngauss), elem%W(elem%ngauss))
+       ! elem%r = xyw(:, 1)
+       ! elem%s = xyw(:, 2)
+       ! elem%W = xyw(:, 3)
+       ! ! little clean up
+       ! if ( allocated(PP) ) deallocate(PP)
+       ! if ( allocated(QQ) ) deallocate(QQ)
+       ! if ( allocated(xyw) ) deallocate(xyw)
+
+       ! -----------------------------
+       rule = (2*elem%p + 1)
+       call gen_triang_quad(rule, ar, xy, elem%W)
+       elem%ngauss = size(elem%W)
+       allocate(elem%r(elem%ngauss), elem%s(elem%ngauss))
+       elem%r = xy(1,:)
+       elem%s = xy(2,:)
+
+       ! print *, 'r = ', elem%r
+       ! print *, 's = ', elem%s
+       ! print *, 'W = ', elem%W
+       ! print *, 'sum = ', sum(elem%W)
+       ! stop
+       deallocate(xy)
 
     end if
 
@@ -1953,23 +2026,23 @@ print *, 'hello!!!'
        ! call comp_Jstar(grd, elem, ielem, i, elem%jac(:,:,i) &
        !      , elem%Jstar(:,:,i), elem%JJ(i) )
        ! subroutine comp_Jstar_point_dg(elem, r, s, jac, Jstar, JJ)
-    select case (elem%elname)
-    case (GEN_TRIANGLE, GEN_QUADRI)
+!     select case (elem%elname)
+!     case (GEN_TRIANGLE, GEN_QUADRI)
 
        call elem%comp_metric_jacobian(r = elem%r(ii), s = elem%s(ii)&
             ,jac = elem%jac(:,:,ii), Jstar = elem%Jstar(:,:,ii) &
             , JJ = elem%JJ(ii))
-    case (GEN_SPHULL)
+!     case (GEN_SPHULL)
 
-elem%jac(:,:,ii) = reshape( (/ 1.0d0, 0.0d0, 0.0d0, 1.0d0 /), (/ 2 , 2 /) )
-elem%Jstar(:,:,ii) = elem%jac(:,:,ii)
-elem%JJ(ii) = 1.0d0
+! elem%jac(:,:,ii) = reshape( (/ 1.0d0, 0.0d0, 0.0d0, 1.0d0 /), (/ 2 , 2 /) )
+! elem%Jstar(:,:,ii) = elem%jac(:,:,ii)
+! elem%JJ(ii) = 1.0d0
  
-    case default
-       print *, 'unknown name of the element in comp metric jacobians! stop'
-       stop
+!     case default
+!        print *, 'unknown name of the element in comp metric jacobians! stop'
+!        stop
 
-    end select
+!     end select
 
     end do
 

@@ -35,6 +35,7 @@ module grd2hull
   public :: convert_grd_to_hull, write_hulls_gnuplot
   public :: agglomerate_hulls, hull2array, hull2edgs
   public :: print_hulls
+  public :: gen_debug_hulls_1
 
 contains
 
@@ -349,7 +350,7 @@ contains
        return
     end if
 
-    if ( (size(thull1%ejs) >= 4) .or. (size(thulls%hl(hullnum2)%ejs) >= 4) ) then
+    if ( (size(thull1%ejs) >= 5) .or. (size(thulls%hl(hullnum2)%ejs) >= 5) ) then
        try_agglomerate = .false.
        return
     end if
@@ -746,5 +747,139 @@ contains
 
     ! done here
   end function is_angle_good
+
+  subroutine gen_debug_hulls_1(hls)
+    implicit none
+    type(hulls), intent(out), target :: hls
+
+    ! local vars
+    type(hull), pointer :: thull => null()
+    type(ej), pointer :: tej => null()
+
+    ! alloc all hulls
+    allocate(hls%hl(5))
+
+    ! add hull1
+    thull => hls%hl(1)
+    thull%is_active = .true.
+    thull%is_bn = .true.
+    allocate(thull%ejs(3))
+
+    tej => thull%ejs(1)
+    tej%x = reshape((/ 0.0d0, 0.0d0, 0.5d0, 0.0d0 /), (/2,2/))
+    tej%bc = 1
+    tej%neigh = -1
+
+    tej => thull%ejs(2)
+    tej%x = reshape((/ 0.5d0, 0.0d0, 0.0d0, 0.5d0 /), (/2,2/))
+    tej%bc = 0
+    tej%neigh = 5
+
+    tej => thull%ejs(3)
+    tej%x = reshape((/ 0.0d0, 0.5d0, 0.0d0, 0.0d0 /), (/2,2/))
+    tej%bc = 4
+    tej%neigh = -1
+
+    ! add hull2
+    thull => hls%hl(2)
+    thull%is_active = .true.
+    thull%is_bn = .true.
+    allocate(thull%ejs(3))
+
+    tej => thull%ejs(1)
+    tej%x = reshape((/ 1.0d0, 0.0d0, 1.5d0, 0.0d0 /), (/2,2/))
+    tej%bc = 1
+    tej%neigh = -1
+
+    tej => thull%ejs(2)
+    tej%x = reshape((/ 1.5d0, 0.0d0, 1.5d0, 0.5d0 /), (/2,2/))
+    tej%bc = 2
+    tej%neigh = -1
+
+    tej => thull%ejs(3)
+    tej%x = reshape((/ 1.5d0, 0.5d0, 1.0d0, 0.0d0 /), (/2,2/))
+    tej%bc = 0
+    tej%neigh = 5
+
+    ! add hull3
+    thull => hls%hl(3)
+    thull%is_active = .true.
+    thull%is_bn = .true.
+    allocate(thull%ejs(3))
+
+    tej => thull%ejs(1)
+    tej%x = reshape((/ 1.5d0, 0.5d0, 1.5d0, 1.0d0 /), (/2,2/))
+    tej%bc = 2
+    tej%neigh = -1
+
+    tej => thull%ejs(2)
+    tej%x = reshape((/ 1.5d0, 1.0d0, 1.0d0, 1.0d0 /), (/2,2/))
+    tej%bc = 3
+    tej%neigh = -1
+
+    tej => thull%ejs(3)
+    tej%x = reshape((/ 1.0d0, 1.0d0, 1.5d0, 0.5d0 /), (/2,2/))
+    tej%bc = 0
+    tej%neigh = 5
+
+    ! add hull4
+    thull => hls%hl(4)
+    thull%is_active = .true.
+    thull%is_bn = .true.
+    allocate(thull%ejs(3))
+
+    tej => thull%ejs(1)
+    tej%x = reshape((/ 0.5d0, 1.0d0, 0.0d0, 1.0d0 /), (/2,2/))
+    tej%bc = 3
+    tej%neigh = -1
+
+    tej => thull%ejs(2)
+    tej%x = reshape((/ 0.0d0, 1.0d0, 0.0d0, 0.5d0 /), (/2,2/))
+    tej%bc = 4
+    tej%neigh = -1
+
+    tej => thull%ejs(3)
+    tej%x = reshape((/ 0.0d0, 0.5d0, 0.5d0, 1.0d0 /), (/2,2/))
+    tej%bc = 0
+    tej%neigh = 5
+
+    ! add hull5
+    thull => hls%hl(5)
+    thull%is_active = .true.
+    thull%is_bn = .true.
+    allocate(thull%ejs(6))
+
+    tej => thull%ejs(1)
+    tej%x = reshape((/ 0.5d0, 0.0d0, 1.0d0, 0.0d0 /), (/2,2/))
+    tej%bc = 1
+    tej%neigh = -1
+
+    tej => thull%ejs(2)
+    tej%x = reshape((/ 1.0d0, 0.0d0, 1.5d0, 0.5d0 /), (/2,2/))
+    tej%bc = 0
+    tej%neigh = 2
+
+    tej => thull%ejs(3)
+    tej%x = reshape((/ 1.5d0, 0.5d0, 1.0d0, 1.0d0 /), (/2,2/))
+    tej%bc = 0
+    tej%neigh = 3
+
+    tej => thull%ejs(4)
+    tej%x = reshape((/ 1.0d0, 1.0d0, 0.5d0, 1.0d0 /), (/2,2/))
+    tej%bc = 4
+    tej%neigh = -1
+
+    tej => thull%ejs(5)
+    tej%x = reshape((/ 0.5d0, 1.0d0, 0.0d0, 0.5d0 /), (/2,2/))
+    tej%bc = 0
+    tej%neigh = 4
+
+    tej => thull%ejs(6)
+    tej%x = reshape((/ 0.0d0, 0.5d0, 0.5d0, 0.0d0 /), (/2,2/))
+    tej%bc = 0
+    tej%neigh = 1
+
+    ! done here
+  end subroutine gen_debug_hulls_1
 
 end module grd2hull

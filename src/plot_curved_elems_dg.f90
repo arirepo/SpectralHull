@@ -355,7 +355,7 @@ contains
        do jj = 1, grd2%nnodesg
           ! find (r,s) of this (x,y) of subtriangulation
           call telem%xy2rs(x = grd2%x(jj), y = grd2%y(jj) &
-               , maxitr = 40, tolrs = 1.0d-6, r = r, s = s) 
+               , maxitr = 40, tolrs = 1.0d-14, r = r, s = s) 
 
           ! project elem%u at that point
           call telem%comp_u(r, s, utmp(:, jj))
