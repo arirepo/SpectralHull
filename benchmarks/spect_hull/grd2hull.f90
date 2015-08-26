@@ -35,7 +35,8 @@ module grd2hull
   public :: convert_grd_to_hull, write_hulls_gnuplot
   public :: agglomerate_hulls, hull2array, hull2edgs
   public :: print_hulls
-  public :: gen_debug_hulls_1
+  public :: gen_debug_hulls_1, gen_aft_hulls
+  public :: find_neigh_hulls_brute
 
 contains
 
@@ -537,11 +538,11 @@ contains
     ! inserting the last repeated node
     ar(nrow, :) = hl%ejs(size(hl%ejs))%x(:, 2)
 
-    ! final check
-    if ( any( ar(1, :) .ne. ar(nrow, :) ) ) then
-       print *, 'the given hull could not be converted to array! stop'
-       stop
-    end if
+    ! ! final check
+    ! if ( any( ar(1, :) .ne. ar(nrow, :) ) ) then
+    !    print *, 'the given hull could not be converted to array! stop'
+    !    stop
+    ! end if
 
     ! done here
   end subroutine hull2array
@@ -881,5 +882,186 @@ contains
 
     ! done here
   end subroutine gen_debug_hulls_1
+
+
+  subroutine eq_poly(xc, r, n, hl)
+    implicit none
+    real*8, dimension(:), intent(in) :: xc
+    real*8, intent(in) :: r
+    integer, intent(in) :: n
+    type(hull) :: hl
+
+    ! local vars
+    integer :: i
+    real*8 :: theta, x, y, x0, y0
+
+    ! allocate/prepare the hull
+    ! based on the given number of sides "n"
+    hl%is_active = .true.
+    hl%is_bn = .false.
+    if ( allocated(hl%ejs) ) deallocate(hl%ejs)
+    allocate(hl%ejs(n))
+
+    ! init
+    theta = 2.0d0 * PI_NUM / dble(n)
+
+    do i = 0, n
+
+       x = xc(1) + r * cos(theta * dble(i))
+       y = xc(2) + r * sin(theta * dble(i))
+
+       if (i .eq. 0) then
+
+          x0 = x
+          y0 = y
+
+       else
+
+          hl%ejs(i)%bc = -1
+          hl%ejs(i)%neigh = -1
+          hl%ejs(i)%x(:,1) = (/ x0, y0 /)
+          hl%ejs(i)%x(:,2) = (/ x , y  /)
+
+          x0 = x
+          y0 = y
+
+       end if
+
+    end do
+
+    ! done here
+  end subroutine eq_poly
+  
+  subroutine gen_aft_hulls(outlet, nx, hls)
+    implicit none
+    real*8, dimension(:, :), intent(in) :: outlet
+    integer, intent(in) :: nx
+    type(hulls) :: hls
+
+    ! local vars
+    integer :: ny, ne, nyy, i, j
+    real*8 :: h, theta0, r, e, xbar(2), x0(2)
+    type(hull) :: thull
+
+    ! init
+    ny = size(outlet, 1)
+    h = 0.50d0 * (outlet(2, 2) - outlet(1, 2))
+    ne = 6
+    theta0 = 2.0d0 * PI_NUM / dble(ne)
+    r = h / sin(theta0)
+    e = 2.0d0 * r * sin(theta0 / 2.0d0)
+    xbar = outlet(1, :)
+    x0 = (/ (xbar(1) + r), xbar(2) /)
+    nyy = ny
+
+    do i = 1, nx 
+       do j = 1, nyy 
+          call eq_poly(xc = x0, r = r, n = ne, hl = thull)
+          call push_bottom_hull(hls = hls, hl = thull)
+          x0(2) = x0(2) + 2.0d0 * h
+       end do
+       if (mod(i, 2) .ne. 0) then
+          x0 = (/ (x0(1)+ r + e/2.0d0), (xbar(2) - h) /)
+          nyy = ny + 1
+       else
+          x0 = (/ (x0(1)+ r + e/2.0d0), xbar(2) /)
+          nyy = ny
+       end if
+    end do
+
+    ! done here
+  end subroutine gen_aft_hulls
+
+  subroutine push_bottom_hull(hls, hl)
+    implicit none
+    class(hulls) :: hls
+    class(hull), intent(in) :: hl
+
+    ! local vars
+    integer :: n
+    type(hull), dimension(:), allocatable :: tmp
+
+    if ( allocated(hls%hl) ) then
+       n = size(hls%hl)
+       if ( n .eq. 0 ) then
+          print *, 'hulls allocated with size zero! stop'
+          stop
+       end if
+    else
+       allocate(hls%hl(1))
+       hls%hl(1) = hl
+       return
+    end if
+
+    n = n + 1
+    allocate(tmp(n))
+    tmp(1:(n-1)) = hls%hl(1:(n-1))
+    tmp(n) = hl
+    call move_alloc(tmp, hls%hl)
+
+    ! bullet proofing
+    if ( allocated(tmp) ) deallocate(tmp)
+
+    ! done here
+  end subroutine push_bottom_hull
+
+  subroutine find_neigh_hulls_brute(hls, tol)
+    implicit none
+    class(hulls), target :: hls
+    real*8, intent(in) :: tol
+
+    ! local vars
+    integer :: i, j, k, l
+    class(hull), pointer :: thull => null(), thull2 => null()
+    class(ej), pointer :: tej => null(), tej2 => null()
+    real*8 :: tmp(2,2)
+
+    ! loop over hulls
+    ! loop over edges
+    ! for each edge loop over all other hulls and edges
+    ! compare coordinates to the given tolerance
+    ! if found then this edge bc = 0 and neigh = the other hull number
+    ! else bc = 1 (far field) and neigh = -1
+
+    do i = 1, size(hls%hl)
+       thull => hls%hl(i)
+
+       do j = 1, size(thull%ejs)
+          tej => thull%ejs(j)
+
+          do k = 1, size(hls%hl)
+
+             if ( k .eq. i ) cycle
+
+             thull2 => hls%hl(k)
+
+             do l = 1, size(thull2%ejs)
+                tej2 => thull2%ejs(l)
+
+                tmp(1, 1) = tej2%x(1,2)
+                tmp(2, 1) = tej2%x(2,2)
+                tmp(1, 2) = tej2%x(1,1)
+                tmp(2, 2) = tej2%x(2,1)
+
+                if ( (maxval(abs(tej%x - tej2%x)) <= tol) &
+                     .or. (maxval(abs(tej%x - tmp)) <= tol) ) then ! found neighbor
+                   tej%bc = 0 ! interior
+                   tej%neigh = k ! other hull number
+                   go to 101
+                end if
+
+             end do
+          end do
+
+          thull%is_bn = .true.
+          tej%bc = 1 ! outlet
+          tej%neigh = -1
+
+101       continue
+       end do
+    end do
+
+    ! done here
+  end subroutine find_neigh_hulls_brute
 
 end module grd2hull

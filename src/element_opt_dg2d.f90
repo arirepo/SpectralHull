@@ -667,11 +667,14 @@ end do
 
     ! local vars
     integer :: i
+    real*8 :: r, rho0
 
     do i = 1, elem%npe
 
+r = (elem%x(1, i) - 1.0d0)**2 + (elem%x(2, i) - 0.5d0)**2
+rho0 = (1 + 0.1d0 * exp(-14.0d0 * r )) * rho
        ! u2U(rho, u, v, P, gamma, UU)
-       call u2U(rho, u, v, P, elem%gamma, elem%U(:, i))
+       call u2U(rho0, u, v, P, elem%gamma, elem%U(:, i))
 
     end do
 

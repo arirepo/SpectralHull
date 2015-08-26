@@ -25,6 +25,7 @@ program benchmark_geom
   character(len = 100) :: anim_name
   integer :: anim_itr
   type(hulls) :: hls
+  real*8, dimension(:, :), allocatable :: outlet
 
   ! grid generation
   ! call read_segment_file('../../geom/naca0012_euler.dat', 'parabolic', wspace%grd)
@@ -59,18 +60,31 @@ program benchmark_geom
 
   ! convert p1 grid to hulls
   ! call convert_grd_to_hull(wspace%grd, hls)
-  call gen_debug_hulls_1(hls)
+  ! call gen_debug_hulls_1(hls)
+allocate(outlet(5, 2) )
+outlet(:, 1) = 0.0d0
+outlet(:, 2) = (/ 0.0d0, 0.25d0, 0.75d0, 1.0d0 /)
+! outlet(:, 2) = (/ (dble(i-1) / 9.0d0 * 10.0d0 , i = 1, 10) /)
+
+print *, 'generating aft hulls'
+
+call gen_aft_hulls(outlet = outlet, nx = 11 , hls = hls)
+print *, 'done!', size(hls%hl) , ' hulls generated!'
+call find_neigh_hulls_brute(hls = hls, tol = 1.0d-14)
   call write_hulls_gnuplot('hls_before.dat', hls)
-  call agglomerate_hulls(thulls=hls, maxtry=20)
+deallocate(outlet)
+!stop
+  !call agglomerate_hulls(thulls=hls, maxtry=20)
   call write_hulls_gnuplot('hls.dat', hls)
   call print_hulls(hls)
+!stop
 
 ! stop
 
 ! stop
   ! proceed to add higher order points
   allocate( pin(size(hls%hl)), eltypein(size(hls%hl)) )
-  pin = 4
+  pin = 2
   eltypein = 0
 
   ! do j = 1, size(hls%hl)
@@ -183,7 +197,7 @@ print *, 'hey im here!'
   ! march only one time step
   ! call wspace%march_field(dt = 1.0d-4, itrs = 300)
 call vis_curved_grid_dg2(wspace, 'init_hulls.dat')
-  do anim_itr = 1, 180
+  do anim_itr = 1, 380
 
      ! compute the field evolution
      call wspace%tvd_rk(dt = 1.0d-4, itrs = 500)
