@@ -14,12 +14,12 @@ VPATH = ./:../../src:
 ## NOTE!!! Now select your compiler from below 
 ### compiler
 # F90 = /usr/bin/gfortran
-# F90 = /opt/gcc/bin/gfortran
-# F90 = /home/aghasemi/gcc-trunk/bin/gfortran
-F90 = /usr/local/gcc-5-20150306/bin/gfortran
+#F90 = /opt/gcc/bin/gfortran
+F90 = /home/aghasemi/gcc-trunk/install_dir/bin/gfortran
+# F90 = /usr/local/gcc-5-20150306/bin/gfortran
 F77 = $(F90)
-# CC = cc
-CC = /usr/local/gcc-5-20150306/bin/gcc
+CC = cc
+# CC = /usr/local/gcc-5-20150306/bin/gcc
 # CC = icc
 ##F90 = gfortran
 # F90 = ifort
@@ -38,8 +38,8 @@ COMPFLAGS    =  -c  $(COMMONFLAGS)
 LIBS    = 
 INCS    = 
 LINKFLAGS    =      $(COMMONFLAGS) 
-# LINK_SUFFIX  =     -llapack -lblas
-LINK_SUFFIX  =   -L/home/aghasemi/blueprint_lapack/gfort_lapack/lapack-3.5.0 -llapack -lblas
+LINK_SUFFIX  =     -llapack -lblas
+#LINK_SUFFIX  =   -L/home/aghasemi/blueprint_lapack/gfort_lapack/lapack-3.5.0 -llapack -lblas
 
 OMP_FLAGS = -fopenmp
 # OMP_FLAGS = 

@@ -1581,7 +1581,9 @@ print *, 'itr = ', itr
     integer, dimension(:), allocatable :: pts
     type(edgs) :: tedgs0
     real*8, dimension(:), allocatable :: xnew, ynew 
-
+real*8 :: xcc(2)
+integer :: iii
+type(hull) :: hl0
     ! basic init of some parameters
     ! ----------------------------------------
 
@@ -1601,9 +1603,23 @@ print *, 'itr = ', itr
        elem%elname = GEN_SPHULL
     end if
 
+! use refrence
+hl0 = hl
+xcc = 0.0d0
+do iii = 1, size(hl0%ejs)
+xcc = xcc + hl0%ejs(iii)%x(:, 1)
+end do
+xcc = xcc / dble(size(hl0%ejs))
+
+! subtract
+do iii = 1, size(hl0%ejs)
+hl0%ejs(iii)%x(:, 1) = hl0%ejs(iii)%x(:, 1) - xcc
+hl0%ejs(iii)%x(:, 2) = hl0%ejs(iii)%x(:, 2) - xcc 
+end do
+
 
     ! first get the border (frame) of the current hull
-    call hull2array(hl, ar)
+    call hull2array(hl0, ar)
 
     ! snap boundary points to the boundary curves
     ! if they are not already on the curve
@@ -1696,10 +1712,10 @@ print *, 'itr = ', itr
        if ( elem%eltype .eq. 0 ) then !Fekete Greedy Algorithm (Base)
 
           ! convert hull to edgs
-          call hull2edgs(hl, tedgs0)
+          call hull2edgs(hl0, tedgs0)
           ! init and comp approximate Fekete points
           call tfekete%init(d = elem%p, name = 'custom2d' &
-               , s = 3, tedgs = tedgs0)
+               , s = 3, magnify = 5, tedgs = tedgs0)
           ! copy coordinates to local coords x_loc
           elem%npe = size(tfekete%fin_coords, 2)
 elem%p = nint(sqrt(dble(elem%npe)))-1
@@ -1971,7 +1987,11 @@ elem%x(2, :) = ynew
        ! Jacobian of the transformation should be set to 1.
        !
        ! allocate(elem%x(size(elem%x_loc, 1), size(elem%x_loc, 2)))
-       elem%x = elem%x_loc 
+       elem%x = elem%x_loc
+elem%x(1, :) = elem%x(1, :) + xcc(1)
+elem%x(2, :) = elem%x(2, :) + xcc(2)
+
+  
 
     case default
 

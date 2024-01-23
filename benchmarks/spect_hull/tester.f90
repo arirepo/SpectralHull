@@ -84,20 +84,20 @@ deallocate(outlet)
 ! stop
   ! proceed to add higher order points
   allocate( pin(size(hls%hl)), eltypein(size(hls%hl)) )
-  pin = 2
+  pin = 4
   eltypein = 0
 
-  ! do j = 1, size(hls%hl)
-  !    do i = 1, size(hls%hl(j)%ejs)
-  !       if ( any(hls%hl(j)%ejs(i)%x(1,:) < .2d0) &
-  !            .or. any(hls%hl(j)%ejs(i)%x(1,:) > 2.0d0) &
-  !            .or. any(hls%hl(j)%ejs(i)%x(2,:) < -0.6d0) &
-  !            .or. any(hls%hl(j)%ejs(i)%x(2,:) >  0.6d0) ) then
-  !          pin(j) = 3
-  !          exit
-  !       end if
-  !    end do
-  ! end do
+  do j = 1, size(hls%hl)
+     do i = 1, size(hls%hl(j)%ejs)
+        if ( any(hls%hl(j)%ejs(i)%x(1,:) < .2d0) &
+             .or. any(hls%hl(j)%ejs(i)%x(1,:) > 4.0d0) &
+             .or. any(hls%hl(j)%ejs(i)%x(2,:) < 0.1d0) &
+             .or. any(hls%hl(j)%ejs(i)%x(2,:) >  0.9d0) ) then
+           pin(j) = 2
+           exit
+        end if
+     end do
+  end do
 
   ! ! adpat <p> regionally
   ! do i = 1, size(wspace%grd%icon, 1) !ncellsg
@@ -200,7 +200,7 @@ call vis_curved_grid_dg2(wspace, 'init_hulls.dat')
   do anim_itr = 1, 380
 
      ! compute the field evolution
-     call wspace%tvd_rk(dt = 1.0d-4, itrs = 500)
+     call wspace%tvd_rk(dt = 1.0d-4, itrs = 10)
 
      ! make animation
      write (anim_name, "(A5,I0.3)") "dgvis", anim_itr
