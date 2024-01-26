@@ -17,9 +17,9 @@ module element_opt
      ! header ----
      integer :: neqs
      ! the following are local coords of Gauss points.
-     ! r(k), s(k), W(k); <k = 1...ngauss> are coords and 
+     ! r(k), s(k), W(k); <k = 1...ngauss> are coords and
      ! weights of Gauss-Legendre points on a triangle
-     integer :: ngauss 
+     integer :: ngauss
      real*8, dimension(:), allocatable :: r, s, W
      ! generalized basis functions
      type(basis) :: tbasis
@@ -51,9 +51,9 @@ module element_opt
 
 contains
 
-  ! initializes each element according to the 
+  ! initializes each element according to the
   ! grid specification
-  subroutine init_elem(elem, ielem, grd, neqs)  
+  subroutine init_elem(elem, ielem, grd, neqs)
     implicit none
     type(element), intent(inout) :: elem
     integer, intent(in) :: ielem ! element number
@@ -78,13 +78,13 @@ contains
     ! higher order elements
     ! -------------------------------------------
     elem%neqs = neqs
-    
+
     ! compute the "order_num" or number of Gauss points
     ! rule = maxval((/ ceiling(dble(p+5)/dble(2) ), p /))
     rule = int(2.0d0 * p) ! infact it should be "p" for linear
-                 ! Laplace equation for constant shape elements 
-                 ! but since we've got rational function 
-                 ! for curvilinear elements, then we put 
+                 ! Laplace equation for constant shape elements
+                 ! but since we've got rational function
+                 ! for curvilinear elements, then we put
                  ! it 2*p for safety.
                  ! NOTE : in general this is not correct
                  !
@@ -144,11 +144,11 @@ contains
            , elem%d_psi_d_xi(npe,elem%ngauss) &
            , elem%d_psi_d_eta(npe,elem%ngauss) )
 
-    ! evaluating the basis function and their derivatives at 
+    ! evaluating the basis function and their derivatives at
     ! Gauss - Legendre (quadrature) points and then storing
     do i = 1, elem%ngauss
        x0 = elem%r(i)
-       y0 = elem%s(i) 
+       y0 = elem%s(i)
        call elem%tbasis%eval(x0, y0, 0,  elem%psi(:,i)        )
        call elem%tbasis%eval(x0, y0, 1,  elem%d_psi_d_xi(:,i) )
        call elem%tbasis%eval(x0, y0, 2,  elem%d_psi_d_eta(:,i))
@@ -157,9 +157,9 @@ contains
     ! allocate Jacobian of transformation
     allocate(elem%jac(2,2, elem%ngauss), elem%Jstar(2,2, elem%ngauss) )
     allocate(elem%JJ(elem%ngauss) )
- 
+
     ! compute the Jacobian of transformation matrix , its inverse and
-    ! the value of Jacobian at each Gauss-Legendre point 
+    ! the value of Jacobian at each Gauss-Legendre point
     do i = 1, elem%ngauss
        call comp_Jstar(grd, elem, ielem, i, elem%jac(:,:,i) &
             , elem%Jstar(:,:,i), elem%JJ(i) )
@@ -184,14 +184,14 @@ contains
     ! done here
   end subroutine init_elem
 
-  
-  ! computes Jacobian of the transformation "jac" and 
+
+  ! computes Jacobian of the transformation "jac" and
   ! "Jstar" or the inverse of the Jacobian
-  ! of the transformation at the Gauss point "(r(k),s(k))" 
-  ! within the element "elem" with number "ielem" in grid "grd". 
-  ! The determinant of Jacobian of the transformation 
+  ! of the transformation at the Gauss point "(r(k),s(k))"
+  ! within the element "elem" with number "ielem" in grid "grd".
+  ! The determinant of Jacobian of the transformation
   ! is returned in "JJ".
-  
+
   subroutine comp_Jstar(grd, elem, ielem, k, jac, Jstar, JJ)
     implicit none
     type(grid), intent(in) :: grd
@@ -212,18 +212,18 @@ contains
     xi = 0.0d0; yi = 0.0d0; der = 0.0d0
     dx_dr = 0.0d0; dx_ds = 0.0d0; dy_dr= 0.0d0; dy_ds = 0.0d0
     npe = grd%npe(ielem)
-    ! print *, '=============================================' 
-    ! print *, '=============================================' 
+    ! print *, '============================================='
+    ! print *, '============================================='
     ! print *, 'computing jacobian for elem #', ielem
-    ! print *, '=============================================' 
-    ! print *, '=============================================' 
+    ! print *, '============================================='
+    ! print *, '============================================='
 
     ! compute the components of jac
     do i = 1, npe ! assuming iso-geometric expansion for x, y
        ! print *, 'at point #', grd%icon(ielem,i)
        der(1) =  elem%d_psi_d_xi(i,k)
        der(2) = elem%d_psi_d_eta(i,k)
-       ! print *, 'der = [', der, ']' 
+       ! print *, 'der = [', der, ']'
        xi = grd%x(grd%icon(ielem,i))
        yi = grd%y(grd%icon(ielem,i))
        ! print *, 'xi = ', xi, 'yi = ', yi
@@ -247,11 +247,11 @@ contains
     JJ = dx_dr * dy_ds - dx_ds * dy_dr
 
     ! check it, should be valid grid!!!
-    if (JJ <= 0.0d0) then 
+    if (JJ <= 0.0d0) then
        print *, 'error : negative or zero Jacobian at element (',ielem,')'
        ! print *, ' JJ = ', JJ
        stop
-    ! else 
+    ! else
     !    print *, 'OKKKK : positive Jacobian at element (',ielem,')'
     !    print *, ' JJ = ', JJ
     end if
@@ -266,19 +266,18 @@ contains
   end subroutine comp_Jstar
 
 
-  ! computes mass matrix [K] and rhs vectors
-  ! for the given element
-  ! NOTE: the element must be initialized before
-  ! this
+  !> @brief computes mass matrix [K] and rhs vectors
+  !! for the given element
+  !> @note the element must be initialized before this.
 
-  subroutine comp_elem_KQf(elem, ielem, grd)  
+  subroutine comp_elem_KQf(elem, ielem, grd)
     implicit none
     type(element), intent(inout) :: elem
     integer, intent(in) :: ielem ! element number
     type(grid), intent(in) :: grd
 
     ! local vars
-    integer :: i, j, k, l, m, npe 
+    integer :: i, j, k, l, m, npe
     real*8, dimension(2) :: der1, der2
     real*8 :: coeff
 
@@ -295,11 +294,11 @@ contains
     elem%K = 0.0d0
     elem%M = 0.0d0
 
-    ! select the coefficitn of the Jacobian of the transformation
+    ! select the coefficient of the Jacobian of the transformation
     select case (grd%elname(ielem))
-    case ( GEN_QUADRI)
+    case (GEN_QUADRI)
        coeff = 1.0d0
-    case ( GEN_TRIANGLE)
+    case (GEN_TRIANGLE)
        coeff = 0.5d0
     end select
 
@@ -318,7 +317,7 @@ contains
                    ! accumulate to the stiffness matrix of this element
                    elem%K(l,m,i,j) = elem%K(l,m,i,j) &
                         + sum(der1 * der2) * coeff * elem%JJ(k) * elem%W(k)
-                   ! accumulate to the mass matrix of this element 
+                   ! accumulate to the mass matrix of this element
                    elem%M(l,m,i,j) = elem%M(l,m,i,j) &
                         + elem%psi(i,k) * elem%psi(j,k) * coeff * elem%JJ(k) * elem%W(k)
 
@@ -335,7 +334,8 @@ contains
     ! done here
   end subroutine comp_elem_KQf
 
-  ! assembles the entire stiffness matrix
+  !< @brief
+  !< assembles the entire stiffness matrix
   subroutine assemble_all( elems, grd, KK, rhs)
     implicit none
     type(element), dimension(:), target, intent(in) :: elems
@@ -362,27 +362,28 @@ contains
        npe = grd%npe(k)
        do i = 1, npe
           pti = icon(k,i)
-          rhs(:,pti) = rhs(:,pti) + elem%Q(:, i) + elem%f(:, i) 
+          rhs(:,pti) = rhs(:,pti) + elem%Q(:, i) + elem%f(:, i)
 
           do j = 1, npe
              ptj = icon(k,j)
-             KK(:,:,pti, ptj) = KK(:,:,pti, ptj) + elem%K(:,:,i,j) 
+             KK(:,:,pti, ptj) = KK(:,:,pti, ptj) + elem%K(:,:,i,j)
           end do
 
        end do
 
     end do
 
-    ! done here   
+    ! done here
   end subroutine assemble_all
 
-  ! computes Jacobian of the transformation "jac" and 
-  ! "Jstar" or the inverse of the Jacobian
-  ! of the transformation at any point "(r,s)" 
-  ! within the element "elem" with number "ielem" in grid "grd". 
-  ! The determinant of Jacobian of the transformation 
-  ! is returned in "JJ".
-  
+  !< @details
+  !< computes Jacobian of the transformation "jac" and
+  !! "Jstar" or the inverse of the Jacobian
+  !! of the transformation at any point "(r,s)"
+  !! within the element "elem" with number "ielem" in grid "grd".
+  !< The determinant of Jacobian of the transformation
+  !! is returned in "JJ".
+
   subroutine comp_Jstar_point(grd, elem, ielem, r, s, jac, Jstar, JJ)
     implicit none
     type(grid), intent(in) :: grd
@@ -434,7 +435,7 @@ contains
     JJ = dx_dr * dy_ds - dx_ds * dy_dr
 
     ! check it, should be valid grid!!!
-    if (JJ <= 0.0d0) then 
+    if (JJ <= 0.0d0) then
        print *, 'error in comp_Jstar_point: negative or zero' &
             , ' Jacobian at element (',ielem,')'
        stop
@@ -450,18 +451,21 @@ contains
   end subroutine comp_Jstar_point
 
   !
+  !< @details
+  !< computes the primary variable <u> at a
+  !! node of an element using the values of the basis function
+  !! given at that point
   !
   ! computes the primary variable <u> at a  
   ! node of an element using the values of the basis function
   ! given at that point
   !
+  !< i.e. for element "i" at point (r,s) we have:
   !
-  ! i.e. for element "i" at point (r,s) we have:
-  !
-  !    u(r,s) = sum_k (u_k psi_k(r, s) )
+  !<    u(r,s) = sum_k (u_k psi_k(r, s) )
   !
   !
-  
+
   subroutine comp_u_point(u, grd, elem, ielem, r, s, u_out)
     implicit none
     real*8, dimension(:,:), intent(in) :: u
@@ -491,28 +495,29 @@ contains
   end subroutine comp_u_point
 
   !
-  !
-  ! computes the gradient at an interior  
-  ! node of an element using the values of
-  ! the gradient of the basis function
-  ! given at that point
-  !
-  !
-  ! i.e. for element "i" at point (r,s) we have:
-  !
-  !    grad u(r,s) = sum_k (u_k *grad psi_k(r, s) )
+  !< @details
+  !! Computes the gradient at an interior
+  !! node of an element using the values of
+  !! the gradient of the basis functions
+  !! given at that point
   !
   !
-  
+  !< i.e. for element "i" at point (r,s) we have:
+  !!
+  !!   /f$ \grad u(r,s) = sum_{k} (u_{k} * \grad \psi_{k(r, s)}) /f$
+  !
+  !
+
   subroutine comp_grad_u_point(u, grd, elem, ielem, r, s, dudx, dudy)
     implicit none
-    real*8, dimension(:,:), intent(in) :: u
-    type(grid), intent(in) :: grd
-    type(element), intent(inout) :: elem
-    integer, intent(in) :: ielem
-    real*8, intent(in) :: r, s
+    real*8, dimension(:,:), intent(in) :: u !< The value of solution
+    type(grid), intent(in) :: grd   !< Grid under calculation
+    type(element), intent(inout) :: elem  !< Current element
+    integer, intent(in) :: ielem  !< Current element number in the grid.
+    real*8, intent(in) :: r, s    !< Point coordinates in the master element
     ! dimension(elem%neqs)
-    real*8, dimension(:), intent(out) :: dudx, dudy
+    !< @todo This may need to be adjusted for 2D -3D cases or to be generalized.
+    real*8, dimension(:), intent(out) :: dudx, dudy !< Gradients of U in x and y directions.
 
     ! local vars
     integer :: k, ptk, npe
@@ -535,7 +540,7 @@ contains
        ptk = grd%icon(ielem,k)
 
        der(1) = d_psi_d_xi(k)
-       der(2) = d_psi_d_eta(k) 
+       der(2) = d_psi_d_eta(k)
        der = matmul(Jstar, der)
        dudx(:) = dudx(:) + u(:,ptk) * der(1)
        dudy(:) = dudy(:) + u(:,ptk) * der(2)
@@ -544,13 +549,14 @@ contains
     ! done here
   end subroutine comp_grad_u_point
 
-  ! computes local coords (r,s) given the
-  ! global coordinates (x,y) using a robust
-  ! Newton method.
-  ! 
-  ! This should be applied consistently to
-  ! higher-order elements also.
-  
+  !< @details
+  !! computes local coords (r,s) given the
+  !! global coordinates (x,y) using a robust
+  !! Newton method.
+  !<
+  !! This should be applied consistently to
+  !! higher-order elements also.
+
   subroutine xy2rs(x, y, elem, ielem, grd, maxitr, tolrs, r, s)
     implicit none
     real*8, intent(in) :: x, y
@@ -593,7 +599,7 @@ contains
           der(1) = d_psi_d_xi(i); der(2) = d_psi_d_eta(i)
 
           F = F - (/ (grd%x(pt) * val) , (grd%y(pt) * val) /)
-          JJ(1,1) =  JJ(1,1) + grd%x(pt) * der(1) 
+          JJ(1,1) =  JJ(1,1) + grd%x(pt) * der(1)
           JJ(1,2) =  JJ(1,2) + grd%x(pt) * der(2)
           JJ(2,1) =  JJ(2,1) + grd%y(pt) * der(1)
           JJ(2,2) =  JJ(2,2) + grd%y(pt) * der(2)
@@ -619,7 +625,7 @@ contains
           else if (  (r > (1.0d0 + tolrs)) .or. (s > (1.0d0 + tolrs)) &
                .or.  (r < (0.0d0 - tolrs)) .or. (s < (0.0d0 - tolrs)) ) then
              ! print *, '(r,s) = ', r, s ,' out of range! stop.'
-             ! stop 
+             ! stop
           end if
           ! print *, 'j = ', j , 'error = ', sqrt(sum(delta*delta))
           return

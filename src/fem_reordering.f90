@@ -1,3 +1,9 @@
+!> @details sorts the real*8 vector <x> without touching it!
+!! instead, returns the permutation vector <p> that
+!! corrresponds to the sort operations based on: <br>
+!!
+!! typ = '+'  ====> sorts smaller to larger values <br>
+!! typ = '-'  ====> sorts larger to smaller values
 module fem_reordering
   implicit none
 
@@ -6,12 +12,7 @@ module fem_reordering
   public :: fem_reorder, arash_sort 
 contains
 
-  ! sorts the real*8 vector <x> without touching it!
-  ! instead, returns the permutation vector <p> that
-  ! corrresponds to the sort operations based on:
-  !
-  ! typ = '+'  ====> sorts smaller to larger values
-  ! typ = '-'  ====> sorts larger to smaller values
+  
   ! 
   subroutine arash_sort(x, p, typ)
     implicit none
@@ -24,11 +25,11 @@ contains
 
     ! bulletproofing
     select case (typ)
-    case ('+', '-')
+      case ('+', '-')
        ! do nothing
-    case default
-       print *, 'fatal: unknown sorting operation! stop'
-       stop
+      case default
+        print *, 'fatal: unknown sorting operation! stop'
+        stop
     end select
 
     n = size(x)
@@ -55,30 +56,30 @@ contains
     ! done here
   end subroutine arash_sort
 
-  !
-  ! reorders the tuple:
-  ! (xi, eta) :: xy(1,:) = xi, xy(2,:) = eta
-  ! of the master element in the desired
-  ! counterclockwise FEM orientation described below:
-  !
-  ! 
-  !     [3]
-  !      |  \
-  !     (10) (9)
-  !      |      \
-  !edg3 (11)     (8) <edg2>
-  !      |   no     \
-  !     (12)  order  (7)
-  !      |             \
-  !     [1]-(4)-(5)-(6)-[2]
-  !         <edg1>
-  ! interior points are left untouched on 
-  ! and have the original ordering.
+  !> @details
+  !! reorders the tuple: <br>
+  !! \f$ (\xi, \eta) :: xy(1,:) = \xi, xy(2,:) = \eta \f$ <br>
+  !! of the master element in the desired
+  !! counterclockwise FEM orientation described below:
+  !!
+  !! 
+  !!      [3]
+  !!       |  \
+  !!      (10) (9)
+  !!       |      \
+  !! edg3 (11)     (8) <edg2>
+  !!       |   no     \
+  !!      (12)  order  (7)
+  !!       |             \
+  !!      [1]-(4)-(5)-(6)-[2]
+  !!          <edg1>
+  !! interior points are left untouched on 
+  !! and will have the original ordering.
 
   subroutine fem_reorder(xy, tol)
     implicit none
-    real*8, dimension(:,:), intent(inout) :: xy
-    real*8, intent(in) :: tol
+    real*8, dimension(:,:), intent(inout) :: xy !< Input array of point coordinates to be modified.
+    real*8, intent(in) :: tol   !< Intended tolerance!
 
     ! local vars
     integer :: i, n, indx, jj, n_tmp

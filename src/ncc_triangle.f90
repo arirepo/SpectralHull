@@ -1,3 +1,8 @@
+!> This module provides some subroutines related to 
+!! Newton-Cotes Closed (NCC) rule on a triangle
+!! as well as some useful utilities for file name increment
+!! and finding avaialabe Fortran unit for I/O.
+
 module ncc_triangle
   implicit none
 
@@ -7,6 +12,28 @@ module ncc_triangle
 
 contains
 
+  !< @details Increments a partially numeric filename.
+  !!  Discussion: <br>
+  !!
+  !!    It is assumed that the digits in the name, whether scattered or
+  !!    connected, represent a number that is to be increased by 1 on
+  !!    each call.  If this number is all 9's on input, the output number
+  !!    is all 0's.  Non-numeric letters of the name are unaffected.
+  !!
+  !!    If the name is empty, then the routine stops.
+  !!
+  !!    If the name contains no digits, the empty string is returned.
+  !!
+  !!  Example:
+  !!
+  !!      Input            Output <br>
+  !!      -----            ------ <br>
+  !!      'a7to11.txt'     'a7to12.txt' <br>
+  !!      'a7to99.txt'     'a8to00.txt' <br>
+  !!      'a9to99.txt'     'a0to00.txt' <br>
+  !!      'cat.txt'        ' ' <br>
+  !!      ' '              STOP! <br>
+  !!
   subroutine file_name_inc ( file_name )
 
     !*****************************************************************************80
@@ -106,6 +133,23 @@ contains
 
     return
   end subroutine file_name_inc
+  
+  !! @details Returns a free FORTRAN unit number.
+  !!
+  !!  Discussion:
+  !!
+  !!    A "free" FORTRAN unit number is a value between 1 and 99 which
+  !!    is not currently associated with an I/O device.  A free FORTRAN unit
+  !!    number is needed in order to open a file with the OPEN command.
+  !!
+  !!    If IUNIT = 0, then no free FORTRAN unit could be found, although
+  !!    all 99 units were checked (except for units 5, 6 and 9, which
+  !!    are commonly reserved for console I/O).
+  !!
+  !!    Otherwise, IUNIT is a value between 1 and 99, representing a
+  !!    free FORTRAN unit.  Note that GET_UNIT assumes that units 5 and 6
+  !!    are special, and will never return those values.
+  
   subroutine get_unit ( iunit )
 
     !*****************************************************************************80
@@ -170,6 +214,34 @@ contains
 
     return
   end subroutine get_unit
+  
+  !< @details Returns the nonnegative remainder of I4 division.
+  !!
+  !!  Discussion: <br>
+  !!
+  !!    If
+  !!      NREM = I4_MODP ( I, J )
+  !!      NMULT = ( I - NREM ) / J
+  !!    then
+  !!      I = J * NMULT + NREM
+  !!    where NREM is always nonnegative.
+  !!
+  !!    The MOD function computes a result with the same sign as the
+  !!    quantity being divided.  Thus, suppose you had an angle A,
+  !!    and you wanted to ensure that it was between 0 and 360.
+  !!    Then mod(A,360) would do, if A was positive, but if A
+  !!    was negative, your result would be between -360 and 0.
+  !!
+  !!    On the other hand, I4_MODP(A,360) is between 0 and 360, always.
+  !!
+  !!  Example:
+  !!
+  !!        I     J     MOD I4_MODP    Factorization <br>
+  !!
+  !!      107    50       7       7    107 =  2 *  50 + 7  <br>
+  !!      107   -50       7       7    107 = -2 * -50 + 7  <br>
+  !!     -107    50      -7      43   -107 = -3 *  50 + 43  <br>
+  !!     -107   -50      -7      43   -107 =  3 * -50 + 43  <br>
   function i4_modp ( i, j )
 
     !*****************************************************************************80
@@ -247,6 +319,32 @@ contains
 
     return
   end function i4_modp
+  
+  !> @details Forces an I4 to lie between given limits by wrapping.
+  !!
+  !!  Example:
+  !!
+  !!    ILO = 4, IHI = 8
+  !!
+  !!    I  Value
+  !!
+  !!    -2     8   <br>
+  !!    -1     4   <br>
+  !!     0     5   <br>
+  !!     1     6   <br>
+  !!     2     7   <br>
+  !!     3     8   <br>
+  !!     4     4   <br>
+  !!     5     5   <br>
+  !!     6     6   <br>
+  !!     7     7   <br>
+  !!     8     8   <br>
+  !!     9     4   <br>
+  !!    10     5   <br>
+  !!    11     6   <br>
+  !!    12     7   <br>
+  !!    13     8   <br>
+  !!    14     4   <br>  
   function i4_wrap ( ival, ilo, ihi )
 
     !*****************************************************************************80
@@ -325,6 +423,8 @@ contains
 
     return
   end function i4_wrap
+  
+  !> @details Returns the degree of an Newton-Cotes Closed (NCC) rule for the triangle.  
   subroutine ncc_triangle_degree ( rule, degree )
 
     !*****************************************************************************80
@@ -378,6 +478,8 @@ contains
 
     return
   end subroutine ncc_triangle_degree
+  
+  !> @details Returns the order of an Newton-Cotes Closed (NCC) rule for the triangle.
   subroutine ncc_triangle_order_num ( rule, order_num )
 
     !*****************************************************************************80
@@ -429,6 +531,8 @@ contains
 
     return
   end subroutine ncc_triangle_order_num
+  
+  !> @details Returns the points and weights of an NCC rule.
   subroutine ncc_triangle_rule ( rule, order_num, xy, w )
 
     !*****************************************************************************80
@@ -549,6 +653,8 @@ contains
 
     return
   end subroutine ncc_triangle_rule
+  
+  !> @details Returns the number of NCC rules available.
   subroutine ncc_triangle_rule_num ( rule_num )
 
     !*****************************************************************************80
@@ -586,6 +692,8 @@ contains
 
     return
   end subroutine ncc_triangle_rule_num
+  
+  !> @details Returns the suborders for an Newton-Cotes Closed (NCC) rule.
   subroutine ncc_triangle_suborder ( rule, suborder_num, suborder )
 
     !*****************************************************************************80
@@ -666,6 +774,9 @@ contains
 
     return
   end subroutine ncc_triangle_suborder
+  
+
+  !> @details Returns the number of suborders for an Newton-Cotes Closed (NCC) rule.
   subroutine ncc_triangle_suborder_num ( rule, suborder_num )
 
     !*****************************************************************************80
@@ -719,6 +830,8 @@ contains
 
     return
   end subroutine ncc_triangle_suborder_num
+  
+  !> @details Returns a compressed Newton-Cotes Closed (NCC) rule.
   subroutine ncc_triangle_subrule ( rule, suborder_num, suborder_xyz, suborder_w )
 
     !*****************************************************************************80

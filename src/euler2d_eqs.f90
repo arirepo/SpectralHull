@@ -20,7 +20,7 @@ contains
     real*8, dimension(:), intent(in) :: Q
     integer, intent(in) :: neqs
     real*8, intent(in) :: gamma, nx, ny
-    logical, dimension(:), intent(in) :: f_select 
+    logical, dimension(:), intent(in) :: f_select
     real*8, dimension(:), intent(out) :: fvl_p, fvl_m
     real*8, dimension(:, :), intent(out) :: d_fvl_p, d_fvl_m
 
@@ -34,8 +34,8 @@ contains
 
     ! HARD reset
     fvl_p = 0.0d0; fvl_m = 0.0d0; d_fvl_p = 0.0d0; d_fvl_m = 0.0d0
-    d_rho_dQi = 0.0d0; d_u_dQi = 0.0d0; d_v_dQi = 0.0d0 
-    d_e_dQi = 0.0d0; d_P_dQi = 0.0d0; d_c_dQi = 0.0d0 
+    d_rho_dQi = 0.0d0; d_u_dQi = 0.0d0; d_v_dQi = 0.0d0
+    d_e_dQi = 0.0d0; d_P_dQi = 0.0d0; d_c_dQi = 0.0d0
     d_ubar_dQi = 0.0d0
 
 
@@ -116,9 +116,9 @@ contains
        do i = 1, neqs
           d_P_dQi(i) = (gamma-1.0d0) * (d_e_dQi(i) - 0.50d0 * d_rho_dQi(i) &
                *(u*u + v*v) - rho * (u * d_u_dQi(i) + v * d_v_dQi(i)))
-          d_c_dQi(i) = gamma/2.0d0 * (d_P_dQi(i) * rho - d_rho_dQi(i) * P) & 
+          d_c_dQi(i) = gamma/2.0d0 * (d_P_dQi(i) * rho - d_rho_dQi(i) * P) &
                / (rho * rho * c)
-          d_ubar_dQi(i) = d_u_dQi(i) * nx + d_v_dQi(i) * ny  
+          d_ubar_dQi(i) = d_u_dQi(i) * nx + d_v_dQi(i) * ny
        end do
 
        ! step 5: using chain-rule to finish the job.
@@ -129,11 +129,11 @@ contains
              do j = 1, neqs
                 d_fvl_p(1, j) = (d_rho_dQi(j)*u_bar + rho*d_ubar_dQi(j))
                 d_fvl_p(2, j) = (d_rho_dQi(j) * u * u_bar+ rho * d_u_dQi(j) &
-                     * u_bar+ rho * u * d_ubar_dQi(j) + nx * d_P_dQi(j)) 
+                     * u_bar+ rho * u * d_ubar_dQi(j) + nx * d_P_dQi(j))
                 d_fvl_p(3, j) = (d_rho_dQi(j) * v * u_bar+ rho * d_v_dQi(j) &
-                     * u_bar+ rho * v * d_ubar_dQi(j) + ny * d_P_dQi(j)) 
-                d_fvl_p(4, j) = ( (d_e_dQi(j)+d_P_dQi(j))* u_bar + (e+P) & 
-                     * d_ubar_dQi(j) ) 
+                     * u_bar+ rho * v * d_ubar_dQi(j) + ny * d_P_dQi(j))
+                d_fvl_p(4, j) = ( (d_e_dQi(j)+d_P_dQi(j))* u_bar + (e+P) &
+                     * d_ubar_dQi(j) )
              end do
           end if
           if(f_select(4)) then
@@ -153,11 +153,11 @@ contains
              do j = 1, neqs
                 d_fvl_m(1, j) = (d_rho_dQi(j)*u_bar + rho*d_ubar_dQi(j))
                 d_fvl_m(2, j) = (d_rho_dQi(j) * u * u_bar+ rho * d_u_dQi(j) &
-                     * u_bar+ rho * u * d_ubar_dQi(j) + nx * d_P_dQi(j)) 
+                     * u_bar+ rho * u * d_ubar_dQi(j) + nx * d_P_dQi(j))
                 d_fvl_m(3, j) = (d_rho_dQi(j) * v * u_bar+ rho * d_v_dQi(j) &
-                     * u_bar+ rho * v * d_ubar_dQi(j) + ny * d_P_dQi(j)) 
+                     * u_bar+ rho * v * d_ubar_dQi(j) + ny * d_P_dQi(j))
                 d_fvl_m(4, j) = ( (d_e_dQi(j)+d_P_dQi(j))* u_bar + (e+P) &
-                     * d_ubar_dQi(j) ) 
+                     * d_ubar_dQi(j) )
              end do
           end if
 
@@ -165,7 +165,7 @@ contains
           if( f_select(3) ) then
              ! d_fvl_p
              sign_pm = 1.0d0
-             p2 = (u_bar / c + sign_pm * 1.0d0)**2 
+             p2 = (u_bar / c + sign_pm * 1.0d0)**2
              do j = 1, neqs
                 d_fvl_p(1, j) = sign_pm*0.25d0*(d_rho_dQi(j)*c*p2  &
                      + rho * d_c_dQi(j) * p2 + 2.0d0*(rho/c) &
@@ -174,25 +174,25 @@ contains
                 d_fvl_p(2, j) = d_fvl_p(1, j) * (nx/gamma &
                      * (-u_bar + sign_pm*2.0d0*c)+u) + fvl_p(1) &
                      * (nx/gamma*(-d_ubar_dQi(j)+sign_pm* 2.0d0* d_c_dQi(j)) &
-                     + d_u_dQi(j)) 
+                     + d_u_dQi(j))
                 d_fvl_p(3, j) = d_fvl_p(1, j) * (ny/gamma &
                      * (-u_bar + sign_pm*2.0d0*c)+v) + fvl_p(1) &
                      * (ny/gamma*(-d_ubar_dQi(j)+sign_pm* 2.0d0 &
-                     * d_c_dQi(j))+ d_v_dQi(j)) 
+                     * d_c_dQi(j))+ d_v_dQi(j))
                 d_fvl_p(4, j) = d_fvl_p(1, j) * ((-(gamma-1.0d0) &
                      *u_bar*u_bar+ sign_pm*2.0d0*(gamma-1.0d0)*u_bar*c+2.0d0*c*c) &
                      /(gamma*gamma-1.0d0)+0.50d0*(u*u+v*v)) + fvl_p(1) &
                      * ((-2.0d0*(gamma-1.0d0)*u_bar*d_ubar_dQi(j) &
                      +sign_pm*2.0d0*(gamma-1.0d0)*(d_ubar_dQi(j)*c &
                      +u_bar*d_c_dQi(j))+ 4.0d0*c*d_c_dQi(j)) &
-                     /(gamma*gamma-1.0d0)+ u*d_u_dQi(j) + v*d_v_dQi(j)) 
+                     /(gamma*gamma-1.0d0)+ u*d_u_dQi(j) + v*d_v_dQi(j))
              end do
           end if
 
           if( f_select(4) ) then
              ! d_fvl_m
              sign_pm = -1.0d0
-             p2 = (u_bar / c + sign_pm * 1.0d0)**2 
+             p2 = (u_bar / c + sign_pm * 1.0d0)**2
              do j = 1, neqs
                 d_fvl_m(1, j) = sign_pm*0.25d0*(d_rho_dQi(j)*c*p2 &
                      + rho * d_c_dQi(j) * p2 + 2.0d0*(rho/c) &
@@ -201,11 +201,11 @@ contains
                 d_fvl_m(2, j) = d_fvl_m(1, j) * (nx/gamma &
                      * (-u_bar + sign_pm*2.0d0*c)+u) + fvl_m(1) &
                      * (nx/gamma*(-d_ubar_dQi(j)+sign_pm &
-                     * 2.0d0* d_c_dQi(j))+ d_u_dQi(j)) 
+                     * 2.0d0* d_c_dQi(j))+ d_u_dQi(j))
                 d_fvl_m(3, j) = d_fvl_m(1, j) * (ny/gamma &
                      * (-u_bar + sign_pm*2.0d0*c)+v) + fvl_m(1) &
                      * (ny/gamma*(-d_ubar_dQi(j)+sign_pm* 2.0d0 &
-                     * d_c_dQi(j))+ d_v_dQi(j)) 
+                     * d_c_dQi(j))+ d_v_dQi(j))
                 d_fvl_m(4, j) = d_fvl_m(1, j) * ((-(gamma-1.0d0) &
                      *u_bar*u_bar+ sign_pm*2.0d0*(gamma-1.0d0) &
                      *u_bar*c+2.0d0*c*c)/(gamma*gamma-1.0d0) &
@@ -213,7 +213,7 @@ contains
                      * ((-2.0d0*(gamma-1.0d0)*u_bar*d_ubar_dQi(j) &
                      +sign_pm*2.0d0*(gamma-1.0d0)*(d_ubar_dQi(j)*c &
                      +u_bar*d_c_dQi(j))+ 4.0d0*c*d_c_dQi(j)) &
-                     /(gamma*gamma-1.0d0)+ u*d_u_dQi(j) + v*d_v_dQi(j)) 
+                     /(gamma*gamma-1.0d0)+ u*d_u_dQi(j) + v*d_v_dQi(j))
              end do
           end if
 
@@ -221,11 +221,11 @@ contains
 
     end if
 
-    ! done here     
+    ! done here
   end subroutine calc_van_leer
 
 
-  !computes wall flux and Jacobians 
+  !computes wall flux and Jacobians
   subroutine calc_wall_flux(Q, neqs, gamma, nx, ny, fw, d_fw)
     implicit none
     real*8, dimension(:), intent(in) :: Q
@@ -272,10 +272,10 @@ contains
 
     ! filling d_fw
     do j = 1, neqs
-       d_fw(1, j) = 0.0d0 
-       d_fw(2, j) = nx * d_P_dQi(j) 
+       d_fw(1, j) = 0.0d0
+       d_fw(2, j) = nx * d_P_dQi(j)
        d_fw(3, j) = ny * d_P_dQi(j)
-       d_fw(4, j) = 0.0d0 
+       d_fw(4, j) = 0.0d0
     end do
 
     ! done here
@@ -311,17 +311,32 @@ contains
     ! done here
   end subroutine calc_pure_euler2d_flux
 
+  !< @brief
+  !! Sets the parameters of Euler equations of compressible fluid dynamics in 2D
+  !< @todo Check the description here!
+  !! Converts u to U
+  !! Here \f$ \rho\ \f$ is the density,
+  !! (u,v) is the velocity.
+  !! /f$ \gamma \f$ is the ratio of specific heats.
+  !< @param \f$ \rho, \gamma, u, v, and P input \f$
+  !< @ param UU output array!
+
   subroutine u2U(rho, u, v, P, gamma, UU)
     implicit none
     ! primitive vars
-    real*8, intent(in) :: rho, u, v, P, gamma
+    real*8, intent(in) :: rho !< \f$ \rho \f$ is the density
+    real*8, intent(in) :: u   !< velocity component
+    real*8, intent(in) :: v   !< velocity component
+    real*8, intent(in) :: P   !<
+    real*8, intent(in) :: gamma !< \f$ \gamma \f$ is the ratio of specific heats.
+
     ! conservative vars
-    real*8, dimension(:), intent(out) :: UU
+    real*8, dimension(:), intent(out) :: UU !< Output of the subroutine
 
     UU(1) = rho
     UU(2) = rho * u
     UU(3) = rho * v
-    UU(4) = P / (gamma - 1.0d0)  + 0.5d0 * rho * (u**2 + v**2) 
+    UU(4) = P / (gamma - 1.0d0)  + 0.5d0 * rho * (u**2 + v**2)
 
     ! done here
   end subroutine u2U
@@ -396,11 +411,11 @@ contains
   ! compute the value of ghost points (AKA F(-) in DG)
   ! using freezed LODI characteristic decomposition of
   ! two dimensional compressible Euler equations.
-  ! 
-  ! The freezed values are evaluated at boundary node 
+  !
+  ! The freezed values are evaluated at boundary node
   ! current value at the current time step.
   !
-  ! input 
+  ! input
   ! Q = [rho, rho * u, rho *v, e] at boundary node
   !     at the current time step
   ! Qinf = [rho_inf, rho_inf * u_inf, rho_inf *v_inf, e_inf]
@@ -433,14 +448,14 @@ contains
     W_inf = matmul(L, uu_inf)
 
     !
-    ! decide on the sign of eigen values 
+    ! decide on the sign of eigen values
     ! how to blend characteristic vars (inlet or outlet)
     ! and compute the final characteristic vars in the
     ! STAR region
     !
     if ( Lambda(2) .eq. 0.0d0 ) then !tangential flow
        W_star = (/ W_inf(1), W_inf(2), W_in(3), W_inf(4) /)
-    elseif     ( all(Lambda(2:4) > 0.0d0) .and. (Lambda(1) < 0.0d0 ) ) then 
+    elseif     ( all(Lambda(2:4) > 0.0d0) .and. (Lambda(1) < 0.0d0 ) ) then
        !subsonic outlet
        W_star = (/ W_inf(1), W_in(2), W_in(3), W_in(4) /)
     elseif ( (Lambda(2) < 0.0d0) .and. (Lambda(3) > 0.0d0 ) ) then !subsonic inlet
@@ -475,7 +490,7 @@ contains
     ! done here
   end subroutine comp_char_bcs_euler2d
 
-  ! converts conservative vars 
+  ! converts conservative vars
   ! Q = [rho, rho *u, rho *v, e]
   ! to primitive vars
   ! qq = [rho, u, v, P]
@@ -508,15 +523,15 @@ contains
   ! compute the left and right eigen matrix
   ! of the two dimensional compressible euler
   ! equations in primitive form
-  ! 
-  ! input  : 
+  !
+  ! input  :
   ! uu = [rho, u, v, P]^T vector of primitive vars
   ! output :
   ! L  = left eigen matrix
   ! R = right eigen matrix; R*L = L*R = I (when nx^2+ny^2=1)
   !
   ! Refer to book "I do like CFD" for more info.
-  ! 
+  !
   subroutine comp_euler2d_L_R(uu, gamma, nx, ny, Lambda, L, R)
     implicit none
     real*8, dimension(:), intent(in) :: uu
@@ -630,7 +645,7 @@ contains
   subroutine comp_projected_wall_vel(u0, et, u)
     implicit none
     real*8, dimension(:), intent(in) :: u0, et
-    real*8, dimension(:), intent(out) :: u 
+    real*8, dimension(:), intent(out) :: u
 
     ! local vars
     real*8 :: u0_dot_et, norm_A1, norm_A2

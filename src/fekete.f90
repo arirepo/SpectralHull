@@ -8,6 +8,8 @@ module fekete
 
 contains
 
+  !> @brief
+  !! Returns the degree of a Fekete rule for the triangle.
   subroutine fekete_degree ( rule, degree )
 
     !*****************************************************************************80
@@ -71,6 +73,9 @@ contains
 
     return
   end subroutine fekete_degree
+
+  !> @brief
+  !> Returns the order of a Fekete rule for the triangle.
   subroutine fekete_order_num ( rule, order_num )
 
     !*****************************************************************************80
@@ -122,6 +127,8 @@ contains
 
     return
   end subroutine fekete_order_num
+
+  !> @brief returns the points and weights of a Fekete rule.
   subroutine fekete_rule ( rule, order_num, xy, w )
 
     !*****************************************************************************80
@@ -240,6 +247,8 @@ contains
 
     return
   end subroutine fekete_rule
+
+  !> @brief Returns the number of Fekete rules available.
   subroutine fekete_rule_num ( rule_num )
 
     !*****************************************************************************80
@@ -277,6 +286,8 @@ contains
 
     return
   end subroutine fekete_rule_num
+
+  !> @brief Returns the suborders for a Fekete rule.
   subroutine fekete_suborder ( rule, suborder_num, suborder )
 
     !*****************************************************************************80
@@ -360,6 +371,8 @@ contains
 
     return
   end subroutine fekete_suborder
+
+  !> @brief Returns the number of suborders for a Fekete rule.
   subroutine fekete_suborder_num ( rule, suborder_num )
 
     !*****************************************************************************80
@@ -423,6 +436,8 @@ contains
 
     return
   end subroutine fekete_suborder_num
+
+  !> @brief Returns a compressed Fekete rule.
   subroutine fekete_subrule ( rule, suborder_num, suborder_xyz, suborder_w )
 
     !*****************************************************************************80
@@ -798,6 +813,8 @@ contains
 
     return
   end subroutine fekete_subrule
+
+  !> @brief Increments a partially numeric filename.
   subroutine file_name_inc ( file_name )
 
     !*****************************************************************************80
@@ -897,6 +914,8 @@ contains
 
     return
   end subroutine file_name_inc
+
+  !> @brief Returns a free FORTRAN unit number.
   subroutine get_unit ( iunit )
 
     !*****************************************************************************80
@@ -961,6 +980,8 @@ contains
 
     return
   end subroutine get_unit
+
+  !> @brief Returns the nonnegative remainder of I4 division.
   function i4_modp ( i, j )
 
     !*****************************************************************************80
@@ -1038,6 +1059,8 @@ contains
 
     return
   end function i4_modp
+
+  !> @brief Forces an I4 to lie between given limits by wrapping.
   function i4_wrap ( ival, ilo, ihi )
 
     !*****************************************************************************80
@@ -1116,6 +1139,8 @@ contains
     return
   end function i4_wrap
 
+
+  !> @brief Returns the Fekete rule for a corresponding degree.
   subroutine fekete_degree2rule( degree, rule)
     implicit none
     integer, intent(in) :: degree

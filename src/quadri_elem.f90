@@ -10,14 +10,14 @@ module quadri_elem
 
 contains
 
-  ! generates 1D point distribution for sides of
-  ! a spectral element.
+  !> @details Generates 1D point distribution for sides of
+  !! a spectral element.
   subroutine pt_dist_1d(n, xmin, xmax, method, x)
     implicit none
-    integer, intent(in) :: n
-    real*8, intent(in) :: xmin, xmax
-    character(len = *), intent(in) :: method
-    real*8, dimension(:), intent(out) :: x
+    integer, intent(in) :: n	!< Number of desired points (input).
+    real*8, intent(in) :: xmin, xmax	!< Max and min position in 1D (input).
+    character(len = *), intent(in) :: method	!< Method of interest to generate points (input).
+    real*8, dimension(:), intent(out) :: x	!< Output: array of the generated points.
 
     ! local vars
     integer :: i
@@ -38,33 +38,35 @@ contains
 
        x = cos( PI * (/ ( dble(i), i = (n-1), 0, -1) /) / dble(n - 1) )
 
-    case default 
-
-       print *, 'can not recognize the method for 1d point distribution. stop '
-       stop
-
-    end select
-
-
-    ! done here
-  end subroutine pt_dist_1d
-
-  ! packs coordinates of the 1D distributed points x1, x2
-  ! into two-dimensional quadrilateral 
-  !
-  !        edge3
-  !  4 --------------- 3
-  !  |                 |
-  !  |                 |
-  !  | edge4           | edge2
-  !  |                 |
-  !  1 ----------------2
-  !         edge1
-  !  
+       case default 
+ 
+         print *, 'Can not recognize the method for 1d point distribution. stop!!'
+         stop
+ 
+     end select
+ 
+ 
+     ! done here
+   end subroutine pt_dist_1d
+ 
+  !> @details Packs coordinates of the 1D distributed points x1, x2
+  !> into two-dimensional quadrilateral 
+  !>
+  !>        edge3
+  !>  4 --------------- 3
+  !>  |                 |
+  !>  |                 |
+  !>  | edge4           | edge2
+  !>  |                 |
+  !>  1 ----------------2
+  !>         edge1
+  !>  
   subroutine fill_elem_coords(x1, x2, x, y)
     implicit none
-    real*8, dimension(:), intent(in), target :: x1, x2
-    real*8, dimension(:), allocatable :: x, y
+    real*8, dimension(:), intent(in), target :: x1  !< Input array in the 1st dimension.
+	real*8, dimension(:), intent(in), target :: x2  !< Input array in the 2nd dimension.
+    real*8, dimension(:), allocatable :: x  !< Output array in the 1st dimension.
+	real*8, dimension(:), allocatable :: y  !< Output array in the 2ns dimension.
 
     ! local vars
     integer :: i, j, n1, n2
@@ -74,15 +76,15 @@ contains
     ! bullet proofing
     if (allocated(x)) then
        if (size(x) > 0) then 
-          print *, 'can not fill quad4 element because <x> might has' &
-               , ' been already filled! try deallocated x! stop'
+          print *, 'Cannot fill quad4 element because <x> might has' &
+               , ' been already filled! try deallocating x! stop!'
           stop
        end if
     end if
     if (allocated(y)) then
        if (size(y) > 0) then 
-          print *, 'can not fill quad4 element because <y> might has' &
-               , ' been already filled! try deallocated y! stop'
+          print *, 'Cannot fill quad4 element because <y> might has' &
+               , ' been already filled! Try deallocating y! stop!'
           stop
        end if
     end if
@@ -136,12 +138,12 @@ contains
     ! done here
   end subroutine fill_elem_coords
 
-  ! concatenates the input array <b> to the end of
-  ! array <a>
+  !> @details Concatenates the input array <b> to the end of
+  !> array <a>
   subroutine concat(a, b)
     implicit none
-    real*8, dimension(:), allocatable :: a
-    real*8, dimension(:), intent(in)  :: b
+    real*8, dimension(:), allocatable :: a  !< The host array
+    real*8, dimension(:), intent(in)  :: b  !< The array to be concatenated.
 
     ! local vars
     integer :: na, nb, total
@@ -166,13 +168,18 @@ contains
     ! done here
   end subroutine concat
 
-  ! generates arbitrary high-order points for a master quadrilateral element
+  !> @details Generates arbitrary high-order points for a master quadrilateral element
   subroutine gen_master_quadri(n1, n2, xmin, xmax, ymin, ymax, method, x, y)
     implicit none
-    integer, intent(in) :: n1, n2
-    real*8, intent(in) :: xmin, xmax, ymin, ymax
-    character(len = *), intent(in) :: method
-    real*8, dimension(:), allocatable :: x, y
+    integer, intent(in) :: n1  !< Number of high-order points along x direction.
+	integer, intent(in) :: n2  !< Number of high-order points along y direction.
+    real*8, intent(in) :: xmin  !< Lower-bound of the domain in the x-direction.
+	real*8, intent(in) :: xmax  !< Upper-bound of the domain in the x-direction.
+	real*8, intent(in) :: ymin  !< Lower-bound of the domain in the y-direction.
+	real*8, intent(in) :: ymax  !< Upper-bound of the domain in the y-direction.
+    character(len = *), intent(in) :: method !< Method of interest to generate points.
+    real*8, dimension(:), allocatable :: x  !< Output: coordinates of the points in the x-direction.
+	real*8, dimension(:), allocatable :: y  !< Output: coordinates of the points in the y-direction.
 
     ! local vars
     real*8 :: x1d(n1), y1d(n2)

@@ -46,7 +46,7 @@ module condition
 
 contains
 
-
+  !> @details Returns some values of the Gamma function.
   subroutine gamma_values ( n_data, x, fx )
 
     !*****************************************************************************80
@@ -186,6 +186,9 @@ contains
 
     return
   end subroutine gamma_values
+  
+  
+  !> @details Returns some values of the Log Gamma function.
   subroutine gamma_log_values ( n_data, x, fx )
 
     !*****************************************************************************80
@@ -303,6 +306,8 @@ contains
 
     return
   end subroutine gamma_log_values
+  
+  !> @details Returns a free FORTRAN unit number.
   subroutine get_unit ( iunit )
 
     !*****************************************************************************80

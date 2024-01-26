@@ -1,3 +1,15 @@
+!> @ingroup Terrible
+!> @author Arash Ghasemi and Mohammad Mahtabi
+!> @brief
+!> A Module to handle grid-related operations
+!> @details
+!> This modules includes the type of grid object as well as
+!> subroutines and functions to
+!> handle grid-related operations such as reading, writing the
+!> output, etc.
+!> @see elem_opt, feket, ncc_triangle, spline, fem_reordering
+!> quadri_elem, and approx_fekete modules.
+
 module grid_opt
   use fekete
   use ncc_triangle
@@ -17,59 +29,86 @@ module grid_opt
 
   private
 
+  !> @brief
+  !> Data types for master element
+  !> @details
+  !> Includes arrays of Jacobi polynomial constants \$f \xi and \eta \$f for
+  !> the nodes on the master element.
   type master_elem
-
-     real*8, dimension(:), allocatable :: xi, eta
-
+    real*8, dimension(:), allocatable :: xi  !< Jacobi polynomial constant \$f \xi \$f
+    real*8, dimension(:), allocatable :: eta  !< Jacobi polynomial constant \$f \eta \$f
   end type master_elem
-  
+
+  !> @brief
+  !> Data types for edges
+  !> @details
+  !> Includes arrays of edges which is the number of the edges.
   type edges
-     integer, dimension(:) , allocatable :: edg1, edg2, edg3, edg4
+    integer, dimension(:) , allocatable :: edg1, edg2, edg3, edg4
   end type edges
 
+  !> @brief
+  !> Data types for curves
+  !> @details
+  !> Includes arrays of edges which is the number of the edges.
   type curve
-     ! type of interpolation curve use
-     integer :: btype = spline_i
-!    integer :: btype = nurbs_i
-     ! point coords
-     real*8, dimension(:), allocatable :: x, y
-     ! spline stuff
-     real*8, dimension(:), allocatable :: t, Mx, My, a, b, c, d, cp, dp
+    ! type of interpolation curve use
+    integer :: btype = spline_i
+    !    integer :: btype = nurbs_i
+    ! point coords
+    real*8, dimension(:), allocatable :: x, y
+    ! spline stuff
+    real*8, dimension(:), allocatable :: t, Mx, My, a, b, c, d, cp, dp
   end type curve
 
+  !> @brief
+  !> Data types for the grid object, i.e. the whole mesh.
+  !> @details
+  !> Includes various attributes for the grid object
+  !> such as: number of total cells (elements), nodes, element connectivity, etc.
+  !> neqs (# of equations considered for the element)
+  !> \f$ \alpha \f$ and \f$ \beta \f$ (Jacobi polynomial coefficients)
+  !> \f$ \xi \f$ and \f$ \eta \f$
+  !> init_lock (showing whether and element is initiated or not)
   type grid
-     integer :: nnodesg,ncellsg,nbedgeg,ntri,nquad4
-     real(kind(0.d0)), allocatable :: x(:),y(:)
-     integer, allocatable :: icon(:,:),ibedge(:,:),ibedgeBC(:), ibedgeELEM(:), ibedgeELEM_local_edg(:)
-     character*40 meshFile
-     integer, allocatable :: e2e(:,:)
+    integer :: nnodesg,ncellsg,nbedgeg,ntri,nquad4
+    real(kind(0.d0)), allocatable :: x(:),y(:)
+    integer, allocatable :: icon(:,:)  !< Element connectivity array. First dimension indicates the &
+      !!element number and the second lists the related node numbers
+    integer, allocatable :: ibedge(:,:)  !< Edge connectivity array. First dimension indicates the &
+      !!edge number and the second lists the related node numbers
+    integer, allocatable :: ibedgeBC(:)  !< Boundary condition values
+    integer, allocatable :: ibedgeELEM(:)  !< Elements having boundary edges
+    integer, allocatable :: ibedgeELEM_local_edg(:) !< Local edges of the element having boundary edges
+    character*40 meshFile  !< Name of the mesh file.
+    integer, allocatable :: e2e(:,:) !< @todo Add description here!
 
-     ! hook-ups for higher order elements
-     integer :: tot_bn_seg
-     integer :: tot_repeated_bn_nodes
-     integer, allocatable :: dup_nodes(:)
-     type(curve), dimension(:), allocatable :: bn_curves
-     ! el2bn(1:ncellsg, 1:2) = (/ tag , edgnum /)
-     ! tag == 0 (interior element) : no need for BC
-     ! tag <> 0 (boundary element) : contains ibedgeBC(edgnum)
-     ! edgnum = the global edge number of the edge in this triangle which is
-     !          is on the curved boundary.
-     integer, dimension(:,:), allocatable :: el2bn ! element to boundary map
-     type(edges), dimension(:), allocatable :: el2edg
+    ! hook-ups for higher order elements
+    integer :: tot_bn_seg !< @todo Add description here!
+    integer :: tot_repeated_bn_nodes !< @todo Add description here!
+    integer, allocatable :: dup_nodes(:) !< @todo Add description here!
+    type(curve), dimension(:), allocatable :: bn_curves !< @todo Add description here!
+    ! el2bn(1:ncellsg, 1:2) = (/ tag , edgnum /)
+    ! tag == 0 (interior element) : no need for BC
+    ! tag <> 0 (boundary element) : contains ibedgeBC(edgnum)
+    ! edgnum = the global edge number of the edge in this triangle which is
+    !          is on the curved boundary.
+    integer, dimension(:,:), allocatable :: el2bn !< Element to boundary map
+    type(edges), dimension(:), allocatable :: el2edg !< Element to boundary edge
 
-     integer, dimension(:), allocatable :: p, eltype, npe, elname, skleton_pts 
-     integer :: nnodesg0, ncellsg0, nbedgeg0 !initial config before hp-adapt
+    integer, dimension(:), allocatable :: p, eltype, npe, elname, skleton_pts
+    integer :: nnodesg0, ncellsg0, nbedgeg0 !initial config before hp-adapt
 
-     type(master_elem), dimension(:), allocatable :: maselem
+    type(master_elem), dimension(:), allocatable :: maselem
 
-     character(len = 2) :: galtype ! Galerkin type, = DG .or. PG
+    character(len = 2) :: galtype ! Galerkin type, = DG .or. PG
 
-     type(fekete_table) :: tfekete_table ! generic fekete points and quadratures
+    type(fekete_table) :: tfekete_table ! generic fekete points and quadratures
 
-     ! (1:ncellsg, 1:4) includes tri and quad simultanously!
-     integer, dimension(:, :), allocatable :: local_edg_bc
+    ! (1:ncellsg, 1:4) includes tri and quad simultanously!
+    integer, dimension(:, :), allocatable :: local_edg_bc
 
-     logical :: linear_boundaries = .false.
+    logical :: linear_boundaries = .false.
 
   end type grid
 
@@ -97,9 +136,9 @@ module grid_opt
 contains
 
   ! reads the input grid generated by CAD software (like Pointwise).
-  ! the CAD grid written in TETREX format. The grid should be 2D 
+  ! the CAD grid written in TETREX format. The grid should be 2D
   ! and should be either triangle or quad.
-  
+
   subroutine read_grid_TETREX(in_grd, grd, noe2e)
     implicit none
     character(len=*), intent(in)      :: in_grd
@@ -117,7 +156,7 @@ contains
     grd%meshFile= in_grd
     ! hard reset
     ! =-----------------=
-    grd%nnodesg=0; grd%ncellsg=0; grd%nbedgeg=0; grd%ntri=0; grd%nquad4=0  
+    grd%nnodesg=0; grd%ncellsg=0; grd%nbedgeg=0; grd%ntri=0; grd%nquad4=0
 
     i = 0; ibedgecell = 0; lface = 0; npe = 0; nzone = 0
     tmp1 = 0; tmp2 = 0; cell_type = 0
@@ -125,8 +164,8 @@ contains
     ! =-----------------=
 
     ! formatting stuff
-1   format(4(/), 4x, 2(I9),(/))
-2   format(10x, 2(I10)) 
+    1   format(4(/), 4x, 2(I9),(/))
+    2   format(10x, 2(I10))
 
     write(*,'(A,/)') "READING/Checking the mesh file ..."
 
@@ -135,41 +174,41 @@ contains
     read(10,1) nzone, grd%nnodesg
 
     do i=1,nzone
-       read(10,2) tmp1, tmp2
-       grd%ncellsg = grd%ncellsg + tmp1
-       grd%nbedgeg = grd%nbedgeg + tmp2
+      read(10,2) tmp1, tmp2
+      grd%ncellsg = grd%ncellsg + tmp1
+      grd%nbedgeg = grd%nbedgeg + tmp2
     enddo
 
     read(10,*)  !locate the cursor to cell to point map
 
     do i = 1, grd%ncellsg
-       read(10,*) cell_indx, cell_type
-       if (cell_type==6) then
-          grd%ntri = grd%ntri + 1         !Triangle cell
-       else if (cell_type==5) then
-          grd%nquad4 = grd%nquad4 + 1       !Quadrilateral cell
-       else
-          write(*,'(A)') "Error: undefined cell tpye at i=",i
-          stop
-       endif
+      read(10,*) cell_indx, cell_type
+      if (cell_type==6) then
+        grd%ntri = grd%ntri + 1         !Triangle cell
+      else if (cell_type==5) then
+        grd%nquad4 = grd%nquad4 + 1       !Quadrilateral cell
+      else
+        write(*,'(A)') "Error: undefined cell tpye at i=",i
+        stop
+      endif
     enddo
     if( (grd%ntri .ne. 0) .and. (grd%nquad4 .ne. 0) ) then
-       stop 'can not handle mixed element mesh read in this version... stopping'
+      stop 'can not handle mixed element mesh read in this version... stopping'
     endif
 
     do i = 1, (grd%nnodesg + 2) !locate the cursor to bface to point map
-       read(10,*) 
+      read(10,*)
     enddo
 
     !Check the boundariy types: ---------------------------------
     do i = 1, grd%nbedgeg
-       read(10,*) btype, cell_indx, lface
+      read(10,*) btype, cell_indx, lface
 
-       !Check the local faces: ---------------------------------
-       if ((lface < 1) .or. (lface>4) ) then
-          write(*,'(A)') "Error: invalid local face number for a 2D mesh"
-          stop
-       endif
+      !Check the local faces: ---------------------------------
+      if ((lface < 1) .or. (lface>4) ) then
+        write(*,'(A)') "Error: invalid local face number for a 2D mesh"
+        stop
+      endif
     enddo
 
     close(10)
@@ -187,27 +226,27 @@ contains
 
     !...now allocate to read mesh/connectivity
     if(grd%ntri.ne.0) then
-       npe=3
+      npe=3
     elseif(grd%nquad4.ne.0) then
-       npe=4
+      npe=4
     endif
     ALLOCATE(grd%x(grd%nnodesg)) ; ALLOCATE(grd%y(grd%nnodesg))
-    ALLOCATE(grd%icon(grd%ncellsg,npe)) 
-    ALLOCATE(grd%ibedge(grd%nbedgeg,2)) 
+    ALLOCATE(grd%icon(grd%ncellsg,npe))
+    ALLOCATE(grd%ibedge(grd%nbedgeg,2))
     ALLOCATE(grd%ibedgeBC(grd%nbedgeg), grd%ibedgeELEM(grd%nbedgeg))  ! bc will be an integer
 
     open(10, file = grd%meshFile, status = 'old')
 
-    do i = 1, nzone+7   !locate the cursor 
-       read(10,*)
+    do i = 1, nzone+7   !locate the cursor
+      read(10,*)
     enddo
 
     do i = 1, grd%ncellsg
-       if (grd%ntri.ne.0) then      !Triangle cell
-          read(10,*) cell_indx, cell_type, grd%icon(i,1),grd%icon(i,2),grd%icon(i,3)
-       else if (grd%nquad4.ne.0) then !Quadrilateral cell
-          read(10,*) cell_indx, cell_type, grd%icon(i,1),grd%icon(i,2),grd%icon(i,3),grd%icon(i,4)
-       endif
+      if (grd%ntri.ne.0) then      !Triangle cell
+        read(10,*) cell_indx, cell_type, grd%icon(i,1),grd%icon(i,2),grd%icon(i,3)
+      else if (grd%nquad4.ne.0) then !Quadrilateral cell
+        read(10,*) cell_indx, cell_type, grd%icon(i,1),grd%icon(i,2),grd%icon(i,3),grd%icon(i,4)
+      endif
     enddo
 
     read(10,*)
@@ -215,67 +254,67 @@ contains
     !Reading coordinates of points:------------------------------
 
     do i = 1, grd%nnodesg
-       read(10,*) grd%x(i), grd%y(i)
+      read(10,*) grd%x(i), grd%y(i)
     enddo
 
     read(10,*)
 
     do i = 1, grd%nbedgeg
-       read(10,*) grd%ibedgeBC(i), ibedgeCell, lface
-       grd%ibedgeELEM(i) = ibedgeCell ! store element number
-       if (grd%ntri.ne.0) then
-          select case(lface)
+      read(10,*) grd%ibedgeBC(i), ibedgeCell, lface
+      grd%ibedgeELEM(i) = ibedgeCell ! store element number
+      if (grd%ntri.ne.0) then
+        select case(lface)
           case(1)
-             grd%ibedge(i,1) = grd%icon(ibedgeCell,1) 
-             grd%ibedge(i,2) = grd%icon(ibedgeCell,2) 
+            grd%ibedge(i,1) = grd%icon(ibedgeCell,1)
+            grd%ibedge(i,2) = grd%icon(ibedgeCell,2)
           case(2)
-             grd%ibedge(i,1) = grd%icon(ibedgeCell,2)
-             grd%ibedge(i,2) = grd%icon(ibedgeCell,3)
+            grd%ibedge(i,1) = grd%icon(ibedgeCell,2)
+            grd%ibedge(i,2) = grd%icon(ibedgeCell,3)
           case(3)
-             grd%ibedge(i,1) = grd%icon(ibedgeCell,3)
-             grd%ibedge(i,2) = grd%icon(ibedgeCell,1)
-          endselect
-       else if (grd%nquad4.ne.0) then
-          select case(lface)
+            grd%ibedge(i,1) = grd%icon(ibedgeCell,3)
+            grd%ibedge(i,2) = grd%icon(ibedgeCell,1)
+        endselect
+      else if (grd%nquad4.ne.0) then
+        select case(lface)
           case(1)
-             grd%ibedge(i,1) = grd%icon(ibedgeCell,1) 
-             grd%ibedge(i,2) = grd%icon(ibedgeCell,2) 
+            grd%ibedge(i,1) = grd%icon(ibedgeCell,1)
+            grd%ibedge(i,2) = grd%icon(ibedgeCell,2)
           case(2)
-             grd%ibedge(i,1) = grd%icon(ibedgeCell,2)
-             grd%ibedge(i,2) = grd%icon(ibedgeCell,3)
+            grd%ibedge(i,1) = grd%icon(ibedgeCell,2)
+            grd%ibedge(i,2) = grd%icon(ibedgeCell,3)
           case(3)
-             grd%ibedge(i,1) = grd%icon(ibedgeCell,3)
-             grd%ibedge(i,2) = grd%icon(ibedgeCell,4)
+            grd%ibedge(i,1) = grd%icon(ibedgeCell,3)
+            grd%ibedge(i,2) = grd%icon(ibedgeCell,4)
           case(4)
-             grd%ibedge(i,1) = grd%icon(ibedgeCell,4)
-             grd%ibedge(i,2) = grd%icon(ibedgeCell,1)
-          endselect
-       endif
+            grd%ibedge(i,1) = grd%icon(ibedgeCell,4)
+            grd%ibedge(i,2) = grd%icon(ibedgeCell,1)
+        endselect
+      endif
     enddo
     !------------------------------------------------------------
     close(10)
 
     ! create e2e map
     if ( present(noe2e) ) then
-       if ( noe2e ) then
-          ! do nothing !
-       else
-          call create_e2e(grd)
-       end if
+      if ( noe2e ) then
+        ! do nothing !
+      else
+        call create_e2e(grd)
+      end if
     else
-       call create_e2e(grd)
+      call create_e2e(grd)
     end if
 
     ! done here
   end subroutine read_grid_TETREX
 
-  ! prints grid properties and conectivity 
+  ! prints grid properties and conectivity
   subroutine print_grid_props(grd)
     implicit none
     type(grid), intent(in) :: grd
 
     ! local vars
-    integer :: i, j 
+    integer :: i, j
 
     ! print statistics
     print *, 'total number of nodes: ', grd%nnodesg
@@ -286,165 +325,168 @@ contains
 
     ! print coordinates
     do i = 1, size(grd%x)
-       print *, 'point ', i, ' = (', grd%x(i),' , ', grd%y(i), ')'
+      print *, 'point ', i, ' = (', grd%x(i),' , ', grd%y(i), ')'
     end do
 
     ! print connectivity matrix
     do i = 1, size(grd%icon,1)
-       write(*, '(A,I5,A)', advance = 'no') 'element (', i, ') contains nodes: '
-       do j = 1, size(grd%icon, 2)
-          write(*, '(I5, A)', advance = 'no') grd%icon(i,j), ', '
-       end do
-       write(*,*) 
+      write(*, '(A,I5,A)', advance = 'no') 'element (', i, ') contains nodes: '
+      do j = 1, size(grd%icon, 2)
+        write(*, '(I5, A)', advance = 'no') grd%icon(i,j), ', '
+      end do
+      write(*,*)
     end do
 
     ! print boundary edges info
     do i = 1, size(grd%ibedge,1)
-       print *, 'edge ', i, ' = (', grd%ibedge(i,1),',', grd%ibedge(i,2) &
-              , ') with BC = ', grd%ibedgeBC(i), 'in the elem num. ' &
-              , grd%ibedgeELEM(i) &
-              , ' with local edg num. = ', grd%ibedgeELEM_local_edg(i) 
+      print *, 'edge ', i, ' = (', grd%ibedge(i,1),',', grd%ibedge(i,2) &
+        , ') with BC = ', grd%ibedgeBC(i), 'in the elem num. ' &
+        , grd%ibedgeELEM(i) &
+        , ' with local edg num. = ', grd%ibedgeELEM_local_edg(i)
     end do
 
     print *, 'the grid file is located in ', grd%meshFile
 
-    ! print e2e map 
+    ! print e2e map
     do i = 1, size(grd%e2e,1)
-       print *, 'elems connected to triangle :', i,' are : ', grd%e2e(i, :)
+      print *, 'elems connected to triangle :', i,' are : ', grd%e2e(i, :)
     end do
 
-    ! 
+    !
     print *, 'total boundary segments from CAD : ', grd%tot_bn_seg
     print *, 'total repeated boundary nodes : ', grd%tot_repeated_bn_nodes
     ! print *, 'dup_nodes = [', grd%dup_nodes , ']'
 
     ! print el2bn
     do i = 1, grd%ncellsg
-       print *, 'grd%el2bn(', i, ':) = ', grd%el2bn(i, :)
+      print *, 'grd%el2bn(', i, ':) = ', grd%el2bn(i, :)
     end do
 
 
     ! print el2edg (if allocated!)
     do i = 1, grd%ncellsg
-       if ( allocated(grd%el2edg(i)%edg1) .and. &
-            allocated(grd%el2edg(i)%edg2) .and. &
-            allocated(grd%el2edg(i)%edg3) ) then
+      if ( allocated(grd%el2edg(i)%edg1) .and. &
+          allocated(grd%el2edg(i)%edg2) .and. &
+          allocated(grd%el2edg(i)%edg3) ) then
 
-          print *, 'in element num.', i , 'we have :' 
-          print *, 'edg1 = [', grd%el2edg(i)%edg1, ']'
-          print *, 'edg2 = [', grd%el2edg(i)%edg2, ']'
-          print *, 'edg3 = [', grd%el2edg(i)%edg3, ']'
-       else
-          print *, 'warning: edg1..3 not allocated for element num. ', i ,'. OK'
-       end if
+        print *, 'in element num.', i , 'we have :'
+        print *, 'edg1 = [', grd%el2edg(i)%edg1, ']'
+        print *, 'edg2 = [', grd%el2edg(i)%edg2, ']'
+        print *, 'edg3 = [', grd%el2edg(i)%edg3, ']'
+      else
+        print *, 'warning: edg1..3 not allocated for element num. ', i ,'. OK'
+      end if
     end do
 
     ! print master element interpolation points
     do i = 1, grd%ncellsg
-       if (allocated(grd%maselem(i)%xi) .and. allocated(grd%maselem(i)%eta)) then 
-          print *, 'in element num.', i , 'master elem interpolation points are:' 
-          print *, 'xi  = [', grd%maselem(i)%xi , ']'
-          print *, 'eta = [', grd%maselem(i)%eta, ']'
-       else
-          print *, 'warning: master element is not allocated' &
-               , ' for element #', i, ' yet!'
-       end if
+      if (allocated(grd%maselem(i)%xi) .and. allocated(grd%maselem(i)%eta)) then
+        print *, 'in element num.', i , 'master elem interpolation points are:'
+        print *, 'xi  = [', grd%maselem(i)%xi , ']'
+        print *, 'eta = [', grd%maselem(i)%eta, ']'
+      else
+        print *, 'warning: master element is not allocated' &
+          , ' for element #', i, ' yet!'
+      end if
     end do
 
-    ! done here 
+    ! done here
   end subroutine print_grid_props
 
-  ! writes the unstructured grid + solution to 
-  ! Tecplot format.
-  ! the format of 'u' is assumed to be:  
-  !
-  ! u(neqs, nnodesg)
-  !
+  !< @Detail
+  !! Writes the unstructured grid + solution to
+  !! Tecplot format.
+  !! the format of 'u' is assumed to be:
+  !>
+  !! u(neqs, nnodesg)
+  !!
   subroutine write_u_tecplot(outfile, grd, u, appendit)
     implicit none
-    character(len=*), intent(in) :: outfile
-    type(grid), intent(in) :: grd
-    real*8, dimension(:,:), intent(in) :: u
-    logical, optional :: appendit
+    character(len=*), intent(in) :: outfile   !< Name of the outputfile
+    type(grid), intent(in) :: grd     !< Grid under analysis
+    real*8, dimension(:,:), intent(in) :: u !< Solution matrix
+    logical, optional :: appendit   !< A logical variable indicating whether or not to append
+    !! the results to the outfile!
 
     ! local vars
     integer :: i, j, k, neqs, nnodes
 
     ! init
     neqs = size(u,1)
-    nnodes = size(u,2) 
+    nnodes = size(u,2)
     if ( nnodes .ne. grd%nnodesg ) then
-       print *, 'nnodes .ne. grd%nnodesg! something is wrong! stop'
-       stop
+      print *, 'nnodes .ne. grd%nnodesg! something is wrong! stop'
+      stop
     end if
 
     ! opening for rewrite
     if ( present( appendit ) ) then
-       if ( appendit ) then
-          open(10, file = outfile, status="old", position="append", action="write")
-       else
-          open(10, file = outfile, status = 'unknown')
-       end if
+      if ( appendit ) then
+        open(10, file = outfile, status="old", position="append", action="write")
+      else
+        open(10, file = outfile, status = 'unknown')
+      end if
     else
-       open(10, file = outfile, status = 'unknown')
+      open(10, file = outfile, status = 'unknown')
     end if
 
     ! write header
+    !< @todo We may need to change this title.
     write(10, *) 'title = "spem2d solution"'
 
     write(10, '(A)', advance = 'no') 'variables = "x", "y"'
     do i = 1, neqs
-       write(10, '(A, I1, A)', advance = 'no') ', "u', i,'"'
+      write(10, '(A, I1, A)', advance = 'no') ', "u', i,'"'
     end do
 
     write(10,*) ! new line!
 
 
     write(10, '(A, I7, A, I7, A, A)', advance = 'no') 'zone n = ' &
-         , nnodes, ', e = ', grd%ncellsg, ', f = fepoint, ' &
-         , 'et = quadrilateral'
+      , nnodes, ', e = ', grd%ncellsg, ', f = fepoint, ' &
+      , 'et = quadrilateral'
     write(10,*) ! new line!
 
     ! write coordinates and values of the vector field [u]
     do k = 1, nnodes
 
-       write(10, '(F30.17, A, F30.17)', advance = 'no') &
-            grd%x(k), ' ',  grd%y(k)
-       do j = 1, neqs
-          write(10, '(A, F30.17)', advance = 'no') ' ',  u(j,k)
-       end do
+      write(10, '(F30.17, A, F30.17)', advance = 'no') &
+        grd%x(k), ' ',  grd%y(k)
+      do j = 1, neqs
+        write(10, '(A, F30.17)', advance = 'no') ' ',  u(j,k)
+      end do
 
-       write(10,*)
- 
+      write(10,*)
+
     end do
 
     ! writing the connectivity matrix
     write(10, *)
 
     if ( grd%nquad4 .eq. 0 ) then ! do old way
-       do k = 1, grd%ntri
-          write(10, *) ' ',  grd%icon(k,1) &
-               , ' ',  grd%icon(k,2), ' ',  grd%icon(k,3) &
-               , ' ',  grd%icon(k,3)
-       end do
+      do k = 1, grd%ntri
+        write(10, *) ' ',  grd%icon(k,1) &
+          , ' ',  grd%icon(k,2), ' ',  grd%icon(k,3) &
+          , ' ',  grd%icon(k,3)
+      end do
 
     else
 
-       do k = 1, grd%ncellsg
-          select case ( grd%elname(k) )
+      do k = 1, grd%ncellsg
+        select case ( grd%elname(k) )
           case ( GEN_TRIANGLE )
-             write(10, *) ' ',  grd%icon(k,1) &
-                  , ' ',  grd%icon(k,2), ' ',  grd%icon(k,3) &
-                  , ' ',  grd%icon(k,3)
-          case ( GEN_QUADRI ) 
-             write(10, *) ' ',  grd%icon(k,1) &
-                  , ' ',  grd%icon(k,2), ' ',  grd%icon(k,3) &
-                  , ' ',  grd%icon(k,4)
+            write(10, *) ' ',  grd%icon(k,1) &
+              , ' ',  grd%icon(k,2), ' ',  grd%icon(k,3) &
+              , ' ',  grd%icon(k,3)
+          case ( GEN_QUADRI )
+            write(10, *) ' ',  grd%icon(k,1) &
+              , ' ',  grd%icon(k,2), ' ',  grd%icon(k,3) &
+              , ' ',  grd%icon(k,4)
           case default
-             print *, 'unknown name of element! stop'
-             stop
-          end select
-       end do
+            print *, 'unknown name of element! stop'
+            stop
+        end select
+      end do
 
     end if
 
@@ -458,7 +500,7 @@ contains
   ! writes cell-centered data to tecplot
   ! USE ONLY FOR ONE CELL CENTER (GAUSS POINT)
   ! THAT MEANS TRANSFORM u(neqs, ngauss, ncellsg) to
-  !             u(:,:) = u(neqs, 1, ncellsg)      
+  !             u(:,:) = u(neqs, 1, ncellsg)
   ! BEFORE THIS!
   subroutine write_u_cell_centered_tecplot(outfile, grd, u, appendit)
     implicit none
@@ -469,27 +511,27 @@ contains
     logical, optional :: appendit
 
     ! local vars
-    integer i, j, jmax, neqs, ncellsg 
+    integer i, j, jmax, neqs, ncellsg
     ! init
     neqs = size(u,1)
     ncellsg = size(u,2)
 
     ! error checking
     if (ncellsg .ne. grd%ncellsg) then
-       print *,' error in write_u_cell_centered_tecplot(...) : ncellsg of '&
-              ,' [u] is not equal to grd%ncellsg!. stop'
-       stop
+      print *,' error in write_u_cell_centered_tecplot(...) : ncellsg of '&
+        ,' [u] is not equal to grd%ncellsg!. stop'
+      stop
     end if
 
     ! opening for rewrite
     if ( present( appendit ) ) then
-       if ( appendit ) then
-          open(10, file = outfile, status="old", position="append", action="write")
-       else
-          open(10, file = outfile, status = 'unknown')
-       end if
+      if ( appendit ) then
+        open(10, file = outfile, status="old", position="append", action="write")
+      else
+        open(10, file = outfile, status = 'unknown')
+      end if
     else
-       open(10, file = outfile, status = 'unknown')
+      open(10, file = outfile, status = 'unknown')
     end if
 
     ! write header
@@ -497,7 +539,7 @@ contains
 
     write(10, '(A)', advance = 'no') 'variables = "x", "y"'
     do i = 1, neqs
-       write(10, '(A, I1, A)', advance = 'no') ', "u', i,'"'
+      write(10, '(A, I1, A)', advance = 'no') ', "u', i,'"'
     end do
     write(10,*)
 
@@ -506,17 +548,17 @@ contains
     write(10,*) 'STRANDID=1, SOLUTIONTIME=0'
 
     write(10, '(A,I7,A,I7,A)', advance = 'no')'Nodes=',grd%nnodesg,', Elements=', ncellsg,', ZONETYPE='
-    
+
     if ( (grd%ntri .ne. 0) .and. (grd%nquad4 .eq. 0) ) then
-       write(10, *) 'FETriangle'
-       jmax = 3
+      write(10, *) 'FETriangle'
+      jmax = 3
     elseif ( (grd%ntri .eq. 0) .and. (grd%nquad4 .ne. 0) ) then
-       write(10, *) 'FEQuadrilateral'
-       jmax = 4
+      write(10, *) 'FEQuadrilateral'
+      jmax = 4
     else
-       print *, 'can not export mixed element grid to ' &
-            , 'tecplot format at this version. stop.'
-       stop
+      print *, 'can not export mixed element grid to ' &
+        , 'tecplot format at this version. stop.'
+      stop
     end if
 
     write(10,*)'DATAPACKING=BLOCK'
@@ -528,36 +570,36 @@ contains
 
     ! write grid x,y
     do i = 1, grd%nnodesg
-       write(10,'(F30.17,A)', advance = 'no') grd%x(i), ' '
-       if ( mod(i, 50) == 0) then
-          write(10,*)
-       end if
+      write(10,'(F30.17,A)', advance = 'no') grd%x(i), ' '
+      if ( mod(i, 50) == 0) then
+        write(10,*)
+      end if
     end do
 
     do i = 1, grd%nnodesg
-       write(10,'(F30.17,A)', advance = 'no') grd%y(i), ' '
-       if ( mod(i, 50) == 0) then
-          write(10,*)
-       end if
+      write(10,'(F30.17,A)', advance = 'no') grd%y(i), ' '
+      if ( mod(i, 50) == 0) then
+        write(10,*)
+      end if
     end do
 
-    ! write cell centered solution 
+    ! write cell centered solution
     do j = 1, neqs
-       do i = 1, ncellsg
-          write(10,'(F30.17,A)', advance = 'no') u(j,i), ' '
-          if ( mod(i, 50) == 0) then
-             write(10,*)
-          end if
-       end do
+      do i = 1, ncellsg
+        write(10,'(F30.17,A)', advance = 'no') u(j,i), ' '
+        if ( mod(i, 50) == 0) then
+          write(10,*)
+        end if
+      end do
     end do
 
     ! writing the connectivity matrix
     ! write(10, *)
     do i = 1, grd%ncellsg
-       do j = 1, jmax 
-          write(10, '(A, I7)', advance = 'no') ' ',  grd%icon(i,j)
-       end do
-       write(10,*)
+      do j = 1, jmax
+        write(10, '(A, I7)', advance = 'no') ' ',  grd%icon(i,j)
+      end do
+      write(10,*)
     end do
 
     close(10)
@@ -565,7 +607,7 @@ contains
     ! done here
   end subroutine write_u_cell_centered_tecplot
 
-  ! searches triangles in a grid for a target point using 
+  ! searches triangles in a grid for a target point using
   ! normal dot product method which is a fast method.
   subroutine search_tri(seed, xt, yt, grd, thetri)
     implicit none
@@ -590,115 +632,115 @@ contains
 
     ! initialization
     x => grd%x(1:grd%nnodesg); y => grd%y(1:grd%nnodesg)
-    tri => grd%icon 
+    tri => grd%icon
     nbr => grd%e2e
     wallcount = 0
 
     !NOTE : seed is the initial triangle
     do  !do it with the current seed
-       !computing dot products and filling dot[] for three edges
-       do pt = 1, 3 !looping over points in the element
+      !computing dot products and filling dot[] for three edges
+      do pt = 1, 3 !looping over points in the element
 
-          if (pt .eq. 3) then !selecting two points of an edge with winding
-             i = pt
-             j = 1
-          else
-             i = pt
-             j = pt + 1
+        if (pt .eq. 3) then !selecting two points of an edge with winding
+          i = pt
+          j = 1
+        else
+          i = pt
+          j = pt + 1
+        end if
+
+        !computing normals of that edge
+        nx = y(tri(seed,j)) - y(tri(seed,i))
+        ny = x(tri(seed,i)) - x(tri(seed,j))
+        M = sqrt(nx*nx + ny*ny)
+        if( M .eq. 0.0d0 ) then
+          print *, 'Fatal error: one side of triangle' &
+            , seed, ' has zero length! exit.'
+          stop
+        end if
+
+        n_hat = (/ (nx / M), (ny / M) /)
+
+        ! finding the center of the edge
+        xc = 0.5d0 * (x(tri(seed,i)) + x(tri(seed,j)))
+        yc = 0.5d0 * (y(tri(seed,i)) + y(tri(seed,j)))
+
+        ! computing the distance vector for that edge
+        rx = xt - xc
+        ry = yt - yc
+        M = sqrt(rx * rx + ry * ry)
+        r_hat = (/ (rx / M), (ry / M) /)
+
+        !removing singularity for the case when seed
+        ! target location and center location are EXACTLY same
+        if( M .ne. 0.0d0) then !storing the dot product
+          dot(i) = n_hat(1)*r_hat(1) + n_hat(2)*r_hat(2)
+        else
+          dot(i) = -1.0d0
+        end if
+
+      end do
+      !decision making section
+      !the target is inside or on this triangle
+      if( (dot(1) <= 0.0d0) .and. (dot(2) <= 0.0d0) .and. (dot(3) <= 0.0d0) ) then
+        thetri = seed !found it!
+        return
+      else !find the maximum dot to define the direction of the marching
+
+        max_dot = dot(1) !initializing max_dot
+        indx_max_dot = 1
+        do i = 2, 3
+          if (dot(i) > max_dot) then
+            max_dot = dot(i)
+            indx_max_dot = i
           end if
+        end do
+      end if
 
-          !computing normals of that edge
-          nx = y(tri(seed,j)) - y(tri(seed,i))
-          ny = x(tri(seed,i)) - x(tri(seed,j))
-          M = sqrt(nx*nx + ny*ny)
-          if( M .eq. 0.0d0 ) then
-             print *, 'Fatal error: one side of triangle' &
-                  , seed, ' has zero length! exit.'
-             stop
+      !correct the winding
+      if     ( indx_max_dot .eq. 1 ) then
+        indx_max_dot = 3
+      elseif ( indx_max_dot .eq. 2 ) then
+        indx_max_dot = 1
+      else
+        indx_max_dot = 2
+      end if
+
+      ! print *, 'indx_max_dot = ', indx_max_dot
+
+      if (nbr(seed,indx_max_dot) .eq. -1) then
+        ! print *, ' warning : we reached to a wall.'
+        wallcount = wallcount + 1
+        do
+          rnd_max_dot = ceiling(rand()*3.0)
+          if ( nbr(seed,rnd_max_dot) .ne. -1 ) then
+            indx_max_dot = rnd_max_dot
+            exit
           end if
+        end do
+      end if
 
-          n_hat = (/ (nx / M), (ny / M) /) 
+      if( wallcount > default_wallcount ) then
+        print *, ' wall encounter exceeds the default value ', default_wallcount &
+          , ' for point (',xt, yt,'). starting using' &
+          , ' brute force search ...'
+        call search_tri_brute(xt, yt, grd, thetri)
+        if ( thetri .eq. -10 ) then
+          print *, ' the target point (', xt, yt,') not found' &
+            , ' in any triangle even using a brute-force method!!! stop.'
+          stop
+        end if
+        return
+      end if
 
-          ! finding the center of the edge
-          xc = 0.5d0 * (x(tri(seed,i)) + x(tri(seed,j)))
-          yc = 0.5d0 * (y(tri(seed,i)) + y(tri(seed,j)))
-
-          ! computing the distance vector for that edge
-          rx = xt - xc
-          ry = yt - yc
-          M = sqrt(rx * rx + ry * ry)
-          r_hat = (/ (rx / M), (ry / M) /) 
-
-          !removing singularity for the case when seed 
-          ! target location and center location are EXACTLY same
-          if( M .ne. 0.0d0) then !storing the dot product
-             dot(i) = n_hat(1)*r_hat(1) + n_hat(2)*r_hat(2)
-          else
-             dot(i) = -1.0d0
-          end if
-
-       end do
-       !decision making section
-       !the target is inside or on this triangle
-       if( (dot(1) <= 0.0d0) .and. (dot(2) <= 0.0d0) .and. (dot(3) <= 0.0d0) ) then 
-          thetri = seed !found it!
-          return 
-       else !find the maximum dot to define the direction of the marching
-
-          max_dot = dot(1) !initializing max_dot
-          indx_max_dot = 1
-          do i = 2, 3
-             if (dot(i) > max_dot) then
-                max_dot = dot(i)
-                indx_max_dot = i
-             end if
-          end do
-       end if
-
-       !correct the winding
-       if     ( indx_max_dot .eq. 1 ) then
-          indx_max_dot = 3
-       elseif ( indx_max_dot .eq. 2 ) then
-          indx_max_dot = 1
-       else
-          indx_max_dot = 2
-       end if
-
-       ! print *, 'indx_max_dot = ', indx_max_dot
-
-       if (nbr(seed,indx_max_dot) .eq. -1) then
-          ! print *, ' warning : we reached to a wall.'
-          wallcount = wallcount + 1
-          do 
-             rnd_max_dot = ceiling(rand()*3.0)
-             if ( nbr(seed,rnd_max_dot) .ne. -1 ) then
-                indx_max_dot = rnd_max_dot
-                exit
-             end if
-          end do
-       end if
-
-       if( wallcount > default_wallcount ) then
-          print *, ' wall encounter exceeds the default value ', default_wallcount &
-               , ' for point (',xt, yt,'). starting using' &
-               , ' brute force search ...'
-          call search_tri_brute(xt, yt, grd, thetri)
-          if ( thetri .eq. -10 ) then
-             print *, ' the target point (', xt, yt,') not found' &
-                  , ' in any triangle even using a brute-force method!!! stop.'
-             stop 
-          end if
-          return
-       end if
-
-       seed = nbr(seed,indx_max_dot)
-       ! print *, 'new seed =', seed
+      seed = nbr(seed,indx_max_dot)
+      ! print *, 'new seed =', seed
 
     end do !keep going, you're gonna find it soon!
 
   end subroutine search_tri
 
-  ! searches triangles in a grid for a target point using 
+  ! searches triangles in a grid for a target point using
   ! brute-force method
   subroutine search_tri_brute(xt, yt, grd, thetri)
     implicit none
@@ -719,58 +761,58 @@ contains
 
     ! initialization
     x => grd%x(1:grd%nnodesg); y => grd%y(1:grd%nnodesg)
-    tri => grd%icon 
+    tri => grd%icon
 
     !NOTE : seed is the current triangle and loops over all tris.
     do  seed = 1, grd%ntri !do it with the current seed
-       !computing dot products and filling dot[] for three edges
-       do pt = 1, 3 !looping over points in the element
+      !computing dot products and filling dot[] for three edges
+      do pt = 1, 3 !looping over points in the element
 
-          if (pt .eq. 3) then !selecting two points of an edge with winding
-             i = pt
-             j = 1
-          else
-             i = pt
-             j = pt + 1
-          end if
+        if (pt .eq. 3) then !selecting two points of an edge with winding
+          i = pt
+          j = 1
+        else
+          i = pt
+          j = pt + 1
+        end if
 
-          !computing normals of that edge
-          nx = y(tri(seed,j)) - y(tri(seed,i))
-          ny = x(tri(seed,i)) - x(tri(seed,j))
-          M = sqrt(nx*nx + ny*ny)
-          if( M .eq. 0.0d0 ) then
-             print *, 'Fatal error: one side of triangle' &
-                  , seed, ' has zero length! exit.'
-             stop
-          end if
+        !computing normals of that edge
+        nx = y(tri(seed,j)) - y(tri(seed,i))
+        ny = x(tri(seed,i)) - x(tri(seed,j))
+        M = sqrt(nx*nx + ny*ny)
+        if( M .eq. 0.0d0 ) then
+          print *, 'Fatal error: one side of triangle' &
+            , seed, ' has zero length! exit.'
+          stop
+        end if
 
-          n_hat = (/ (nx / M), (ny / M) /) 
+        n_hat = (/ (nx / M), (ny / M) /)
 
-          ! finding the center of the edge
-          xc = 0.5d0 * (x(tri(seed,i)) + x(tri(seed,j)))
-          yc = 0.5d0 * (y(tri(seed,i)) + y(tri(seed,j)))
+        ! finding the center of the edge
+        xc = 0.5d0 * (x(tri(seed,i)) + x(tri(seed,j)))
+        yc = 0.5d0 * (y(tri(seed,i)) + y(tri(seed,j)))
 
-          ! computing the distance vector for that edge
-          rx = xt - xc
-          ry = yt - yc
-          M = sqrt(rx * rx + ry * ry)
-          r_hat = (/ (rx / M), (ry / M) /) 
+        ! computing the distance vector for that edge
+        rx = xt - xc
+        ry = yt - yc
+        M = sqrt(rx * rx + ry * ry)
+        r_hat = (/ (rx / M), (ry / M) /)
 
-          !removing singularity for the case when seed 
-          ! target location and center location are EXACTLY same
-          if( M .ne. 0.0d0) then !storing the dot product
-             dot(i) = n_hat(1)*r_hat(1) + n_hat(2)*r_hat(2)
-          else
-             dot(i) = -1.0d0
-          end if
+        !removing singularity for the case when seed
+        ! target location and center location are EXACTLY same
+        if( M .ne. 0.0d0) then !storing the dot product
+          dot(i) = n_hat(1)*r_hat(1) + n_hat(2)*r_hat(2)
+        else
+          dot(i) = -1.0d0
+        end if
 
-       end do
-       !decision making section
-       !the target is inside or on this triangle
-       if( (dot(1) <= 0.0d0) .and. (dot(2) <= 0.0d0) .and. (dot(3) <= 0.0d0) ) then 
-          thetri = seed !found it!
-          return 
-       end if
+      end do
+      !decision making section
+      !the target is inside or on this triangle
+      if( (dot(1) <= 0.0d0) .and. (dot(2) <= 0.0d0) .and. (dot(3) <= 0.0d0) ) then
+        thetri = seed !found it!
+        return
+      end if
 
     end do !keep going, you're gonna find it soon!
 
@@ -799,20 +841,20 @@ contains
     ! ! easy to extend it :)
     ! if (grd%nquad4 .ne. 0 ) then
     !    print *, 'sorry! create_e2e() is for a full trimesh grid in this version.' &
-    !         , ' some quads were found in FEM grid. stop.'
+      !         , ' some quads were found in FEM grid. stop.'
     !    stop
     ! end if
 
     ! allocate
     if ( allocated(grd%e2e) ) then
-       print *, 'warning : e2e in fem-grid is already initialized!'
-       deallocate(grd%e2e)
+      print *, 'warning : e2e in fem-grid is already initialized!'
+      deallocate(grd%e2e)
     end if
 
     if (grd%nquad4 .eq. 0 ) then !only tri, old way!
-       allocate(grd%e2e(grd%ncellsg, 3))
+      allocate(grd%e2e(grd%ncellsg, 3))
     else
-       allocate(grd%e2e(grd%ncellsg, 4))
+      allocate(grd%e2e(grd%ncellsg, 4))
     end if
 
     ! create e2e map
@@ -894,30 +936,31 @@ end select
 
   end subroutine create_e2e
 
-  ! main subroutine for reading segment files
-  ! in the form :
-  !
-  !
-  ! number of points of connector 1
-  ! x1 y1 z1
-  ! x2 y2 z2
-  ! .
-  ! .
-  ! number of points of connector 2
-  ! x1 y1 z1
-  ! x2 y2 z2
-  ! .
-  ! .
-  ! where all points are SEQUNTIAL
-  ! it reads all coords into corresponding
-  ! boundary curve data struct in "grd" type.
-  
+  !> @brief
+  !> Main subroutine for reading segment files.
+  !> @details
+  !> The segment files will be in the form: <br>
+  !> number of points of connector 1 <br>
+  !> x1 y1 z1 <br>
+  !> x2 y2 z2 <br>
+  !> .  .  .  <br>
+  !> .  .  .  <br>
+  !> number of points of connector 2  <br>
+  !> x1 y1 z1 <br>
+  !> x2 y2 z2 <br>
+  !> .  .   .   <br>
+  !> .  .   .   <br>
+  !> where all points are SEQUNTIAL.
+  !> It reads all point coordinates into corresponding
+  !> boundary curve data struct in "grd" type.
+
   subroutine read_segment_file(infile, mode, grd)
     implicit none
-    character(len = *), intent(in) :: infile, mode
-    type(grid), target, intent(inout) :: grd
+    character(len = *), intent(in) :: infile  !<   Name of the input segment file.
+    character(len = *), intent(in) :: mode    !<   Mode of the input segment file.
+    type(grid), target, intent(inout) :: grd  !<   The related grid object.
 
-    ! local vars
+    !> @todo Do we need definition of the local vars or how to exclude them from the documentation.
     integer :: i, j
     integer :: istat
     integer :: npt
