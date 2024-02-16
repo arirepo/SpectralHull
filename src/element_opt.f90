@@ -1,3 +1,15 @@
+!> @ingroup spem2d
+!> @author Arash Ghasemi and Mohammad Mahtabi
+!> @brief
+!> A Module to handle element-related operations
+!> @details
+!> This modules includes the type of elements as well as
+!> subroutines and functions to
+!> handle element-related operations such as
+!> stiffness matrix calculations depending on the type of physics.
+!> @see grid_opt, lag_basis, and quads modules.
+
+
 module element_opt
   ! includes data types for abstract representation of each
   ! element and various subroutines to compute
@@ -11,16 +23,27 @@ module element_opt
 
   private
 
-  ! a datatype abstracting an element
+  !> @brief
+  !> Data types for different mesh elements
+  !> @details
+  !> Includes various attributes for different type of elements
+  !> such as: etype (type), p (order of element), npelem(# of points per element)
+  !> neqs (# of equations considered for the element)
+  !> \f$ \alpha \f$ and \f$ \beta \f$ (Jacobi polynomial coefficients)
+  !> \f$ \xi \f$ and \f$ \eta \f$
+  !> init_lock (showing whether and element is initiated or not)
+
   type element
 
      ! header ----
-     integer :: neqs
+     integer :: neqs !< Number of equations considered for the element
      ! the following are local coords of Gauss points.
      ! r(k), s(k), W(k); <k = 1...ngauss> are coords and
      ! weights of Gauss-Legendre points on a triangle
-     integer :: ngauss
-     real*8, dimension(:), allocatable :: r, s, W
+     integer :: ngauss !< Number of the Gauss quadrature points within the element.
+     real*8, dimension(:), allocatable :: r   !< The first local coordinates of Gauss points in the master element
+     real*8, dimension(:), allocatable :: s   !< The second local coordinates of Gauss points in the master element
+     real*8, dimension(:), allocatable :: W   !< Weights of Gauss-Legendre points on a triangle
      ! generalized basis functions
      type(basis) :: tbasis
      ! psi and d_psi have dimensions = (1..npe, 1..ngauss)
@@ -335,7 +358,7 @@ contains
   end subroutine comp_elem_KQf
 
   !< @brief
-  !< assembles the entire stiffness matrix
+  !< Assembles the entire stiffness matrix
   subroutine assemble_all( elems, grd, KK, rhs)
     implicit none
     type(element), dimension(:), target, intent(in) :: elems
@@ -456,15 +479,13 @@ contains
   !! node of an element using the values of the basis function
   !! given at that point
   !
-  ! computes the primary variable <u> at a  
+  ! computes the primary variable <u> at a
   ! node of an element using the values of the basis function
   ! given at that point
   !
   !< i.e. for element "i" at point (r,s) we have:
   !
   !<    u(r,s) = sum_k (u_k psi_k(r, s) )
-  !
-  !
 
   subroutine comp_u_point(u, grd, elem, ielem, r, s, u_out)
     implicit none
@@ -505,9 +526,6 @@ contains
   !< i.e. for element "i" at point (r,s) we have:
   !!
   !!   /f$ \grad u(r,s) = sum_{k} (u_{k} * \grad \psi_{k(r, s)}) /f$
-  !
-  !
-
   subroutine comp_grad_u_point(u, grd, elem, ielem, r, s, dudx, dudy)
     implicit none
     real*8, dimension(:,:), intent(in) :: u !< The value of solution
@@ -640,5 +658,31 @@ contains
 
     ! done here
   end subroutine xy2rs
+
+  !> @brief A subroutine to set elastic material properties
+  !> @details
+  !> Uses the \f$ \nu \f$ and \f$ E \f$ to calculate \f$ C_{11}, C_{12}, C_{22}, C_{66} \f$ of the constitutive
+  !> @note As of now assumes plane stress assumption and isotropic material.
+   subroutine init_elas_mater_props(grd, ielem, nu, E, C)
+     implicit none
+     type(grid), intent(inout) :: grd !< The parent grid to which the mesh element belongs.
+     integer, intent(in) :: ielem  !< The number of the element in the grid
+     real*8, intent(in) :: nu !< Poisson's ratio (\f$ \nu \f$ ) of the material
+     real*8, intent(in) :: E  !< Modulus of elasticity of the material (E))
+     real*8, dimension (4), intent(out) :: C  !< Values of elasticity tensor: [C11, C12, C22, C66]
+
+     ! start computing and initializing material props
+     ! ASSUMPTION : ISOTROPIC
+     ! C11
+     C(1)= E / (1.0d0 - nu * nu)
+     !C22
+     C(3) = C(1)
+     !C12 = C21
+     C(2) = nu * C(1)
+     !C21 = C12
+     ! C66
+     C(4) = E / (2.0d0 * (1.0d0 + nu) )
+     ! done here
+   end subroutine init_material_props
 
 end module element_opt

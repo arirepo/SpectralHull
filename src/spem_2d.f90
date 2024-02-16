@@ -1,6 +1,6 @@
 module spem_2d
-  ! SPectral Element in 2D 
-  ! 
+  ! SPectral Element in 2D
+  !
   use grid_opt ! for grid operations
   use element_opt
   use fem_utils
@@ -15,7 +15,7 @@ module spem_2d
      integer :: tag
      real*8, dimension(:,:) , allocatable :: u, dudx, dudy
      type(grid) :: grd
-     integer :: neqs 
+     integer :: neqs
      type(element), dimension(:) , allocatable :: elems
      real*8, dimension(:,:,:,:), allocatable :: KK
      real*8, dimension(:,:), allocatable :: rhs
@@ -29,12 +29,21 @@ module spem_2d
 
 contains
 
+!> @brief Initializes the FEM object and its cell objects by allocating
+!! the solution variables, reseting them, and writing them into Tecplot format.
+!> @details Initializes an FEM object by setting the \n
+!! neqs: # of equations \n
+!! lin_solve_method: method of solving Ax=b. Foe example 'LAPACK_LU', etc. \n
+!! tag: is a specific tag of this FEM object in case multiple existed. \n
+!!
+
+
   subroutine fem_init(fem, neqs, lin_solve_method, tag)
     implicit none
-    type(fem_struct), target :: fem
-    integer, intent(in) :: neqs 
-    character(len = *), intent(in) :: lin_solve_method
-    integer , intent(in) :: tag
+    type(fem_struct), target :: fem   !< The FEM object to be initialized.
+    integer, intent(in) :: neqs       !< # of equations of this FEM problem.
+    character(len = *), intent(in) :: lin_solve_method  !< Method of solving Ax=b.
+    integer , intent(in) :: tag     !< Specific tag for this FEM object.
 
 
 
@@ -43,24 +52,25 @@ contains
     type(grid), pointer :: grd
 
     if(fem%grd%nnodesg .eq. 0) then ! fatal
-       print *, 'error : fem%grd%nnodesg = 0! grid must be assigned'& 
+       print *, 'error : fem%grd%nnodesg = 0! grid must be assigned'&
             , ' to fem_struct before initializing it! stopped.'
        stop
     end if
 
-    ! 
+    !
     grd => fem%grd
 
     ! number of equations
     fem%neqs = neqs
 
+    ! tag of this FEM object.
     fem%tag = tag
 
     ! allocate solution vars
     allocate(fem%u(neqs,grd%nnodesg), fem%dudx(neqs,grd%nnodesg) &
          , fem%dudy(neqs,grd%nnodesg))
     ! hard RESET !
-    fem%u = 0.0d0; fem%dudx = 0.0d0; fem%dudy = 0.0d0   
+    fem%u = 0.0d0; fem%dudx = 0.0d0; fem%dudy = 0.0d0
 
     call write_u_tecplot('fem.dat', fem%grd, fem%u)
     ! ! initialize the elements
@@ -99,7 +109,7 @@ contains
     ! setting up the linear solver algorithm
     fem%param%method = lin_solve_method
 
-    ! extra addition 
+    ! extra addition
     call convert_to_matrix(fem%KK, fem%rhs, fem%KK_mat, fem%rhs_mat)
 
     ! done here
@@ -177,8 +187,8 @@ contains
 end module spem_2d
 
 ! program spem_2d
-!   ! SPectral Element in 2D 
-!   ! 
+!   ! SPectral Element in 2D
+!   !
 !   use grid_opt ! for grid operations
 !   use element_opt
 !   use fem_utils
@@ -190,7 +200,7 @@ end module spem_2d
 !   integer :: i
 !   real*8, dimension(:,:) , allocatable :: u, dudx, dudy, u_all
 !   type(grid) :: grd
-!   integer :: neqs 
+!   integer :: neqs
 !   type(element), dimension(:) , allocatable :: elems
 !   real*8, dimension(:,:,:,:), allocatable :: KK
 !   real*8, dimension(:,:), allocatable :: rhs
@@ -210,7 +220,7 @@ end module spem_2d
 !   ! allocate solution vars
 !   allocate(u(neqs,grd%nnodesg), dudx(neqs,grd%nnodesg) &
 !          , dudy(neqs,grd%nnodesg), u_all(3*neqs,grd%nnodesg))
-!   u = 0.0d0; dudx = 0.0d0; dudy = 0.0d0; u_all = 0.0d0   
+!   u = 0.0d0; dudx = 0.0d0; dudy = 0.0d0; u_all = 0.0d0
 
 !   ! initialize the elements
 !   call init_material_props(nu = .33d0, E = 10600000.0d0)
@@ -245,18 +255,18 @@ end module spem_2d
 !   ! ! comp the exact solution (if required)
 !   ! call comp_T_plate_exact(2.0d0, 1.0d0, 323.15D0, 423.15D0, 100, grd, dudy)
 
-!   ! ! store in u_all form  
+!   ! ! store in u_all form
 !   ! u_all(1::3, :) = u
 !   ! u_all(2::3, :) = dudy
 !   ! u_all(3::3, :) = abs(dudy - u)
 !   ! call write_u_tecplot('../runs/u_all.dat', grd, u_all)
 
 !   ! ! show error arithmatic average
-!   ! print *, 'error arith. average : ', sum(abs(dudy - u))/dble(size(abs(dudy - u))) 
+!   ! print *, 'error arith. average : ', sum(abs(dudy - u))/dble(size(abs(dudy - u)))
 
 !   ! ! sample section for cell-based gradients
 !   ! allocate(cell_grad_x(neqs, elems(1)%ngauss, grd%ncellsg) &
-!   !      , cell_grad_y(neqs, elems(1)%ngauss, grd%ncellsg) ) 
+!   !      , cell_grad_y(neqs, elems(1)%ngauss, grd%ncellsg) )
 !   ! allocate( grad_u_all(neqs, grd%ncellsg) )
 !   ! call comp_grad_u(u, grd, elems, cell_grad_x, cell_grad_y)
 !   ! grad_u_all(1, :) = C11 * cell_grad_x(1,1,:) + C12 * cell_grad_y(2,1,:)
