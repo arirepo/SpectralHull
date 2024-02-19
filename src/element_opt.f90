@@ -208,12 +208,12 @@ contains
   end subroutine init_elem
 
 
-  ! computes Jacobian of the transformation "jac" and
-  ! "Jstar" or the inverse of the Jacobian
-  ! of the transformation at the Gauss point "(r(k),s(k))"
-  ! within the element "elem" with number "ielem" in grid "grd".
-  ! The determinant of Jacobian of the transformation
-  ! is returned in "JJ".
+  !> @details Computes Jacobian of the transformation "jac" and
+  !! "Jstar" or the inverse of the Jacobian
+  !! of the transformation at the Gauss point "(r(k),s(k))"
+  !! within the element "elem" with number "ielem" in grid "grd".
+  !! The determinant of Jacobian of the transformation
+  !! is returned in "JJ".
 
   subroutine comp_Jstar(grd, elem, ielem, k, jac, Jstar, JJ)
     implicit none
@@ -357,8 +357,8 @@ contains
     ! done here
   end subroutine comp_elem_KQf
 
-  !< @brief
-  !< Assembles the entire stiffness matrix
+  !> @brief
+  !> Assembles the entire stiffness matrix
   subroutine assemble_all( elems, grd, KK, rhs)
     implicit none
     type(element), dimension(:), target, intent(in) :: elems
@@ -399,12 +399,12 @@ contains
     ! done here
   end subroutine assemble_all
 
-  !< @details
-  !< computes Jacobian of the transformation "jac" and
+  !> @details
+  !> computes Jacobian of the transformation "jac" and
   !! "Jstar" or the inverse of the Jacobian
   !! of the transformation at any point "(r,s)"
   !! within the element "elem" with number "ielem" in grid "grd".
-  !< The determinant of Jacobian of the transformation
+  !! The determinant of Jacobian of the transformation
   !! is returned in "JJ".
 
   subroutine comp_Jstar_point(grd, elem, ielem, r, s, jac, Jstar, JJ)
@@ -473,19 +473,14 @@ contains
     ! done here
   end subroutine comp_Jstar_point
 
-  !
-  !< @details
-  !< computes the primary variable <u> at a
+  !> @details
+  !> computes the primary variable <u> at a
   !! node of an element using the values of the basis function
-  !! given at that point
-  !
-  ! computes the primary variable <u> at a
-  ! node of an element using the values of the basis function
-  ! given at that point
-  !
-  !< i.e. for element "i" at point (r,s) we have:
-  !
-  !<    u(r,s) = sum_k (u_k psi_k(r, s) )
+  !! at that point. \n 
+  !!
+  !> i.e. for element "i" at point (r,s) we have: \n 
+  !!
+  !>    u(r,s) = sum_k (u_k psi_k(r, s) )
 
   subroutine comp_u_point(u, grd, elem, ielem, r, s, u_out)
     implicit none
@@ -515,17 +510,14 @@ contains
     ! done here
   end subroutine comp_u_point
 
-  !
-  !< @details
+  !> @details
   !! Computes the gradient at an interior
   !! node of an element using the values of
   !! the gradient of the basis functions
-  !! given at that point
-  !
-  !
+  !! given at that point. \n 
   !< i.e. for element "i" at point (r,s) we have:
   !!
-  !!   /f$ \grad u(r,s) = sum_{k} (u_{k} * \grad \psi_{k(r, s)}) /f$
+  !! /f$ \grad u(r,s) = sum_{k} (u_{k} * \grad \psi_{k(r, s)}) /f$
   subroutine comp_grad_u_point(u, grd, elem, ielem, r, s, dudx, dudy)
     implicit none
     real*8, dimension(:,:), intent(in) :: u !< The value of solution
@@ -567,11 +559,10 @@ contains
     ! done here
   end subroutine comp_grad_u_point
 
-  !< @details
-  !! computes local coords (r,s) given the
+  !> @details
+  !! Computes local coords (r,s) given the
   !! global coordinates (x,y) using a robust
-  !! Newton method.
-  !<
+  !! Newton method. <br>
   !! This should be applied consistently to
   !! higher-order elements also.
 
