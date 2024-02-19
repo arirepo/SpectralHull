@@ -6,6 +6,7 @@ module spem_2d
   use fem_utils
   use bcs
   use condition
+  use elasticity2D
 
   implicit none
 
@@ -22,6 +23,8 @@ module spem_2d
      real*8, dimension(:,:), allocatable :: KK_mat
      real*8, dimension(:), allocatable :: rhs_mat, xx
      type(lin_solv_param) :: param
+	 integer :: fem_type	!< Indicates the type of problem: 1 for 2D plane stress
+							!! linear elasticity, 2: acoustic wave
 
   end type fem_struct
 
@@ -38,16 +41,18 @@ contains
 !!
 
 
-  subroutine fem_init(fem, neqs, lin_solve_method, tag)
+  subroutine fem_init(fem, neqs, lin_solve_method, tag, fem_type, mater)
     implicit none
     type(fem_struct), target :: fem   !< The FEM object to be initialized.
     integer, intent(in) :: neqs       !< # of equations of this FEM problem.
     character(len = *), intent(in) :: lin_solve_method  !< Method of solving Ax=b.
     integer , intent(in) :: tag     !< Specific tag for this FEM object.
+    integer , intent(in) :: fem_type     !< Type of problem
+    type(isoMat2D), intent(in) :: mater   !< Material properties for solid mechanics
 
 
 
-    ! loca vars
+    ! local vars
     integer :: i
     type(grid), pointer :: grd
 
@@ -66,6 +71,10 @@ contains
     ! tag of this FEM object.
     fem%tag = tag
 
+    ! type of the analysis of this FEM object.
+    fem%fem_type = fem_type
+
+
     ! allocate solution vars
     allocate(fem%u(neqs,grd%nnodesg), fem%dudx(neqs,grd%nnodesg) &
          , fem%dudy(neqs,grd%nnodesg))
@@ -77,11 +86,22 @@ contains
     ! call init_material_props(nu = .33d0, E = 10600000.0d0)
 
     allocate(fem%elems(grd%ncellsg))
-    do i = 1, grd%ncellsg
-       call init_elem(fem%elems(i), i, grd, neqs)
-       call comp_elem_KQf(fem%elems(i), i , grd)
-       ! call fill_Q(grd, fem%elems(i), i)
-    end do
+    if(fem_type .eq. 1) then !Plane stress linear elasticity
+      do i = 1, grd%ncellsg
+         call init_elem(fem%elems(i), i, grd, neqs)
+         call comp_2D_elem_K(fem%elems(i), i , grd, mater)
+         ! call fill_Q(grd, fem%elems(i), i)
+      end do
+    elseif(fem_type .eq. 2) then !Acoustic wave analysi
+      do i = 1, grd%ncellsg
+         call init_elem(fem%elems(i), i, grd, neqs)
+         call comp_elem_KQf(fem%elems(i), i , grd)
+         ! call fill_Q(grd, fem%elems(i), i)
+      end do
+    else
+      print *, "Unidentified type of analysis in fem_init. Stop!"
+      stop
+    end if
 
     ! compute grid area
     call comp_grid_area(fem)
@@ -103,8 +123,8 @@ contains
     ! call comp_bn_length(grd, fem%elems)
 
     ! allocate matrix vars before filling
-    allocate( fem%KK_mat(neqs* grd%nnodesg, neqs* grd%nnodesg) &
-         ,  fem%rhs_mat(neqs* grd%nnodesg), fem%xx(neqs* grd%nnodesg) )
+    allocate(fem%KK_mat(neqs * grd%nnodesg, neqs * grd%nnodesg) &
+         ,  fem%rhs_mat(neqs * grd%nnodesg), fem%xx(neqs * grd%nnodesg))
 
     ! setting up the linear solver algorithm
     fem%param%method = lin_solve_method
@@ -135,7 +155,7 @@ contains
        case ( GEN_TRIANGLE)
           area = area + 0.5d0 * sum(fem%elems(i)%W * fem%elems(i)%JJ)
        case default
-          print *, 'could not recognize element name when computing' &
+          print *, 'Could not recognize element name when computing' &
                , ' total grid area! stop'
           stop
 
@@ -144,7 +164,7 @@ contains
     end do
 
     ! report
-    print *, 'total grid area is : ', area
+    print *, 'Total grid area is : ', area
 
     ! done here
   end subroutine comp_grid_area
